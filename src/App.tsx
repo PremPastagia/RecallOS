@@ -1,26 +1,37 @@
 
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { AuthProvider } from './components/AuthProvider';
+import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
 import { Home } from './pages/Home';
 import { AddConcept } from './pages/AddConcept';
 import { Search } from './pages/Search';
 import { KnowledgeDetail } from './pages/KnowledgeDetail';
 import { Review } from './pages/Review';
+import { Login } from './pages/Login';
+import { Signup } from './pages/Signup';
 import './index.css';
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Home />} />
-          <Route path="add" element={<AddConcept />} />
-          <Route path="search" element={<Search />} />
-          <Route path="knowledge/:id" element={<KnowledgeDetail />} />
-          <Route path="review" element={<Review />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
+          
+          <Route element={<ProtectedRoute />}>
+            <Route path="/" element={<Layout />}>
+              <Route index element={<Home />} />
+              <Route path="add" element={<AddConcept />} />
+              <Route path="search" element={<Search />} />
+              <Route path="knowledge/:id" element={<KnowledgeDetail />} />
+              <Route path="review" element={<Review />} />
+            </Route>
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 

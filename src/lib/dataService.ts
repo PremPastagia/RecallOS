@@ -1,4 +1,4 @@
-import { supabase, DEV_USER_ID } from './supabase';
+import { supabase } from './supabase';
 import type { KnowledgeItem } from './types';
 
 export const KnowledgeService = {
@@ -6,7 +6,6 @@ export const KnowledgeService = {
     const { data, error } = await supabase
       .from('knowledge_items')
       .select('*, review_states(*)')
-      .eq('user_id', DEV_USER_ID)
       .order('created_at', { ascending: false });
       
     if (error) throw error;
@@ -29,7 +28,6 @@ export const KnowledgeService = {
     const { data, error } = await supabase
       .from('knowledge_items')
       .select('*, review_states(*)')
-      .eq('user_id', DEV_USER_ID)
       .ilike('title', `%${query}%`);
       
     if (error) throw error;
@@ -41,7 +39,6 @@ export const KnowledgeService = {
     const { data, error } = await supabase
       .from('knowledge_items')
       .select('*, review_states!inner(*)')
-      .eq('user_id', DEV_USER_ID)
       .lte('review_states.next_review_date', now);
       
     if (error) throw error;
@@ -49,12 +46,15 @@ export const KnowledgeService = {
   },
 
   addConcept: async (concept: KnowledgeItem): Promise<void> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) throw new Error('User not authenticated');
+
     // 1. Insert into knowledge_items
     const { error: itemError } = await supabase
       .from('knowledge_items')
       .insert({
         id: concept.id,
-        user_id: DEV_USER_ID,
+        user_id: session.user.id,
         title: concept.title,
         summary: concept.summary,
         full_content: concept.fullContent,
