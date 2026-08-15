@@ -1,0 +1,227 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Noto+Serif:wght@400;700&display=swap');
+
+:root {
+  --color-bg-ivory: #FAF8F5;
+  --color-text-obsidian: #1A1A1A;
+  --color-text-secondary: #555555;
+  --color-accent-terracotta: #C86438;
+  --color-accent-terracotta-hover: #b05731;
+  --color-card-bg: #FFFFFF;
+  --color-border: #E8E5E1;
+  
+  --font-serif: 'Noto Serif', serif;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-sanskrit: 'Noto Sans Devanagari', 'Inter', sans-serif;
+  
+  --spacing-xs: 0.5rem;
+  --spacing-sm: 1rem;
+  --spacing-md: 2rem;
+  --spacing-lg: 4rem;
+  --spacing-xl: 8rem;
+  
+  --radius-md: 12px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--color-bg-ivory);
+  color: var(--color-text-obsidian);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+a {
+  color: var(--color-text-obsidian);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: var(--color-accent-terracotta);
+}
+
+button {
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+
+.app-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--spacing-md);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.brand {
+  font-family: var(--font-serif);
+  font-size: 2rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.brand-sanskrit {
+  font-family: var(--font-sanskrit);
+  font-size: 2.2rem;
+}
+
+.nav-links {
+  display: flex;
+  gap: var(--spacing-md);
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+/* Main Content */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: var(--spacing-lg);
+}
+
+/* Search Bar */
+.search-container {
+  width: 100%;
+  max-width: 800px;
+  margin-bottom: var(--spacing-lg);
+}
+
+.search-input {
+  width: 100%;
+  padding: 1.2rem 1.5rem;
+  font-size: 1.2rem;
+  background-color: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  color: var(--color-text-obsidian);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--color-accent-terracotta);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+}
+
+.search-input::placeholder {
+  color: #A0A0A0;
+}
+
+/* Queue Section */
+.queue-section {
+  width: 100%;
+  max-width: 1000px;
+  margin-bottom: var(--spacing-lg);
+}
+
+.section-title {
+  font-size: 1.4rem;
+  margin-bottom: var(--spacing-md);
+}
+
+.queue-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.concept-card {
+  background-color: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.concept-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
+}
+
+.concept-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: var(--spacing-xs);
+}
+
+.concept-summary {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-md);
+  flex-grow: 1;
+}
+
+.memory-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.ring-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-accent-terracotta);
+  border-right-color: var(--color-accent-terracotta);
+  transform: rotate(45deg);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .app-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+  }
+  
+  .nav-links {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .main-content {
+    margin-top: var(--spacing-md);
+  }
+  
+  .search-input {
+    font-size: 1rem;
+    padding: 1rem;
+  }
+  
+  .queue-grid {
+    grid-template-columns: 1fr;
+  }
+}
