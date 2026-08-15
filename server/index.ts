@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { GoogleGenAI, Type } from '@google/genai';
+import { cosineSimilarity } from './cosineSimilarity';
 
 dotenv.config();
 
@@ -34,10 +35,15 @@ app.post('/api/generate-concept', async (req, res) => {
       set "isDuplicate" to true and provide the "duplicateOfId" corresponding to the existing concept's ID.
       Otherwise, generate a completely new structured knowledge item.
       
+      KNOWLEDGE LINKING:
+      If your generated fullContent references any of the existing concepts by name, 
+      format them as a markdown link using their ID, like this: [Concept Name](/knowledge/CONCEPT_ID).
+      Do not over-link; only link when highly relevant.
+
       Keep summaries concise (1-2 sentences). Keep fullContent highly readable and information-dense.
     `;
 
-    // We use gemini-3.6-flash as instructed by the Antigravity skill
+    // 1. Generate text structured output
     const response = await ai.models.generateContent({
       model: 'gemini-3.6-flash',
       contents: `Title: ${title}\n\nUser Description: ${content || 'No detailed description provided.'}`,
@@ -73,11 +79,88 @@ app.post('/api/generate-concept', async (req, res) => {
     const resultText = response.text || '{}';
     const parsedData = JSON.parse(resultText);
 
+    // 2. If it's not a duplicate, generate an embedding for it
+    if (!parsedData.isDuplicate) {
+      const embedResponse = await ai.models.embedContent({
+        model: 'text-embedding-004',
+        contents: `Title: ${parsedData.title}\n\nSummary: ${parsedData.summary}\n\nContent: ${parsedData.fullContent}`
+      });
+      
+      if (embedResponse.embeddings && embedResponse.embeddings.length > 0) {
+        parsedData.embedding = embedResponse.embeddings[0].values;
+      }
+    }
+
     res.json(parsedData);
   } catch (error: any) {
     console.error('Gemini API Error:', error);
     res.status(500).json({ error: 'Failed to generate concept' });
   }
+});
+
+app.post('/api/search', async (req, res) => {
+  try {
+    const { query, concepts } = req.body;
+    
+    if (!query) {
+      return res.status(400).json({ error: 'Query is required' });
+    }
+    
+    if (!concepts || !Array.isArray(concepts)) {
+      return res.status(400).json({ error: 'Concepts array is required for fallback search' });
+    }
+
+    // Embed the query
+    const embedResponse = await ai.models.embedContent({
+      model: 'text-embedding-004',
+      contents: query
+    });
+    
+    const queryEmbedding = embedResponse.embeddings?.[0]?.values;
+    if (!queryEmbedding) {
+      throw new Error('Failed to generate embedding for query');
+    }
+
+    // Compute cosine similarity for each concept
+    const results = concepts.map((concept: any) => {
+      let similarity = 0;
+      if (concept.embedding && Array.isArray(concept.embedding)) {
+        try {
+          similarity = cosineSimilarity(queryEmbedding, concept.embedding);
+        } catch (e) {
+          console.error(`Error calculating similarity for concept ${concept.id}:`, e);
+        }
+      }
+      
+      // Boost exact keyword matches
+      const queryLower = query.toLowerCase();
+      if (concept.title.toLowerCase().includes(queryLower)) {
+        similarity += 0.2; // Keyword boost
+      }
+      
+      return {
+        ...concept,
+        similarity
+      };
+    });
+
+    // Sort by similarity descending, filter out low relevance
+    results.sort((a: any, b: any) => b.similarity - a.similarity);
+    const filteredResults = results.filter((r: any) => r.similarity > 0.5);
+
+    // Remove the large embedding arrays before sending back to frontend
+    const cleanedResults = filteredResults.map((r: any) => {
+      const { embedding, ...rest } = r;
+      return rest;
+    });
+
+    res.json(cleanedResults);
+  } catch (error: any) {
+    console.error('Gemini API Error (search):', error);
+    res.status(500).json({ error: 'Failed to perform semantic search' });
+  }
+});
+
 app.post('/api/generate-questions', async (req, res) => {
   try {
     const { concepts } = req.body;

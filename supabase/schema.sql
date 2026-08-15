@@ -16,6 +16,7 @@ CREATE TABLE knowledge_items (
   title TEXT NOT NULL,
   summary TEXT NOT NULL,
   full_content TEXT NOT NULL,
+  embedding JSONB, -- fallback for pgvector
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

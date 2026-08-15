@@ -37,4 +37,5 @@ export interface KnowledgeItem {
   reviewState: ReviewState;
   relatedConcepts: RelatedConcept[];
   questions?: ReviewQuestion[];
+  embedding?: number[];
 }

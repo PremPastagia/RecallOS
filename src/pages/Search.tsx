@@ -17,7 +17,17 @@ export function Search() {
       
       setLoading(true);
       try {
-        const data = await KnowledgeService.search(query);
+        // Fetch all concepts with embeddings to perform fallback similarity search
+        const allConcepts = await KnowledgeService.getAll();
+        
+        const response = await fetch('/api/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query, concepts: allConcepts })
+        });
+        
+        if (!response.ok) throw new Error('Semantic search failed');
+        const data = await response.json();
         setResults(data);
       } catch (err) {
         console.error('Search error', err);

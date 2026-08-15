@@ -58,6 +58,7 @@ export const KnowledgeService = {
         title: concept.title,
         summary: concept.summary,
         full_content: concept.fullContent,
+        embedding: concept.embedding, // Added for semantic search
         created_at: concept.createdAt
       });
       
@@ -113,6 +114,7 @@ function mapToKnowledgeItem(row: any): KnowledgeItem {
       interval: 1,
       easeFactor: 2.5
     },
+    embedding: row.embedding,
     relatedConcepts: [] // Skipping full resolution for brevity in prototype
   };
 }

@@ -17,8 +17,26 @@ export function AddConcept() {
     setError(null);
     
     try {
-      // Get a list of existing concepts for deduplication context
+      // Get a list of existing concepts
       const allConcepts = await KnowledgeService.getAll();
+      
+      // 1. Semantic search for duplicates FIRST
+      const searchRes = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: title + ' ' + content, concepts: allConcepts })
+      });
+      
+      if (searchRes.ok) {
+        const searchData = await searchRes.json();
+        // If we find a very strong match (> 0.85), treat as duplicate
+        if (searchData.length > 0 && searchData[0].similarity > 0.85) {
+          navigate(`/knowledge/${searchData[0].id}`);
+          return;
+        }
+      }
+
+      // 2. Generate new concept with Gemini
       const existingConcepts = allConcepts.map((c: KnowledgeItem) => ({
         id: c.id,
         title: c.title,
@@ -38,7 +56,7 @@ export function AddConcept() {
       const data = await response.json();
 
       if (data.isDuplicate && data.duplicateOfId) {
-        // Navigate to the existing duplicate concept instead of creating a new one
+        // Fallback LLM duplicate detection
         navigate(`/knowledge/${data.duplicateOfId}`);
         return;
       }
