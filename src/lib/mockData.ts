@@ -105,5 +105,9 @@ export const KnowledgeService = {
   getDueForReview: (): KnowledgeItem[] => {
     const now = new Date().toISOString();
     return mockKnowledgeBase.filter(item => item.reviewState.nextReviewDate <= now);
+  },
+  
+  addConcept: (concept: KnowledgeItem): void => {
+    mockKnowledgeBase.unshift(concept);
   }
 };

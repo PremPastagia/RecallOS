@@ -1,29 +1,86 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { KnowledgeService } from '../lib/mockData';
+import type { KnowledgeItem } from '../lib/types';
 
 export function AddConcept() {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  const handleCommit = () => {
+  const handleCommit = async () => {
     if (!title.trim() || !content.trim()) return;
     
     setIsSubmitting(true);
+    setError(null);
     
-    // Simulate network delay and persistence
-    setTimeout(() => {
+    try {
+      // Get a list of existing concepts for deduplication context
+      const existingConcepts = KnowledgeService.getAll().map(c => ({
+        id: c.id,
+        title: c.title,
+        summary: c.summary
+      }));
+
+      const response = await fetch('/api/generate-concept', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, content, existingConcepts })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate concept from server');
+      }
+
+      const data = await response.json();
+
+      if (data.isDuplicate && data.duplicateOfId) {
+        // Navigate to the existing duplicate concept instead of creating a new one
+        navigate(`/knowledge/${data.duplicateOfId}`);
+        return;
+      }
+
+      // It's a new concept, construct the KnowledgeItem
+      const newId = `k_${Date.now()}`;
+      const newConcept: KnowledgeItem = {
+        id: newId,
+        title: data.title,
+        summary: data.summary,
+        fullContent: data.fullContent,
+        createdAt: new Date().toISOString(),
+        reviewState: {
+          nextReviewDate: new Date().toISOString(),
+          strength: 0,
+          interval: 1,
+          easeFactor: 2.5
+        },
+        relatedConcepts: (data.relatedConceptIds || []).map((relId: string) => {
+          const existing = KnowledgeService.getById(relId);
+          return existing ? { id: relId, title: existing.title } : null;
+        }).filter(Boolean)
+      };
+
+      KnowledgeService.addConcept(newConcept);
+      navigate(`/knowledge/${newId}`);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'An error occurred while synthesizing the concept.');
       setIsSubmitting(false);
-      // In a real app, we'd navigate to the newly created concept's detail page.
-      // For now, just go back to home.
-      navigate('/');
-    }, 800);
+    }
   };
 
   return (
     <div style={{ width: '100%', maxWidth: '800px', margin: '0 auto' }}>
       <h2 className="section-title">Record a New Concept</h2>
+      
+      {error && (
+        <div style={{ padding: '1rem', backgroundColor: '#FEE2E2', color: '#B91C1C', borderRadius: 'var(--radius-md)', marginTop: '1rem' }}>
+          {error}
+        </div>
+      )}
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '2rem' }}>
         <input 
           type="text" 
@@ -54,7 +111,7 @@ export function AddConcept() {
               opacity: (isSubmitting || !title.trim() || !content.trim()) ? 0.5 : 1
             }}
           >
-            {isSubmitting ? 'Committing...' : 'Commit to Memory'}
+            {isSubmitting ? 'Synthesizing...' : 'Commit to Memory'}
           </button>
         </div>
       </div>
