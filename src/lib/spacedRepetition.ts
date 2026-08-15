@@ -28,10 +28,12 @@ export function calculateNextReviewState(currentState: ReviewState, grade: Revie
   }
 
   // Calculate the next review date by adding the interval (in days) to now
-  const nextDate = new Date();
+  const now = new Date();
+  const nextDate = new Date(now);
   nextDate.setDate(nextDate.getDate() + interval);
 
   return {
+    lastReviewDate: now.toISOString(),
     nextReviewDate: nextDate.toISOString(),
     strength,
     interval,

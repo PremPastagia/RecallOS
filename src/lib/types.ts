@@ -23,6 +23,7 @@ export interface ReviewQuestion {
 }
 
 export interface ReviewState {
+  lastReviewDate?: string; // ISO format date string
   nextReviewDate: string; // ISO format date string
   strength: number;       // 0 to 1
   interval: number;       // Days between reviews

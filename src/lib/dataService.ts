@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import type { KnowledgeItem, RelatedConcept } from './types';
+import { getDailyQueue, sortConceptsByPriority, PriorityLevel } from './memoryPlanner';
 
 // Default seed data for local testing & offline fallback
 const SEED_CONCEPTS: KnowledgeItem[] = [
@@ -344,27 +345,66 @@ export const KnowledgeService = {
   },
 
   getDueForReview: async (): Promise<KnowledgeItem[]> => {
+    const all = await KnowledgeService.getAll();
+    return getDailyQueue(all);
+  },
+
+  getWeakConcepts: async (): Promise<KnowledgeItem[]> => {
+    const all = await KnowledgeService.getAll();
+    // We want the top items that are actually weak, prioritized by the planner
+    // (OVERDUE_WEAK and WEAK are priorities 1 and 3)
+    const sorted = sortConceptsByPriority(all);
+    const weak = sorted
+      .filter(entry => entry.item.reviewState.strength <= 1)
+      .map(entry => entry.item);
+    return weak.slice(0, 3);
+  },
+
+  getRecentlyLearned: async (): Promise<KnowledgeItem[]> => {
+    const all = await KnowledgeService.getAll();
+    // Prioritize NEWLY_LEARNED, then fallback to descending createdAt
+    const sorted = sortConceptsByPriority(all);
+    const newlyLearned = sorted
+      .filter(entry => entry.priority === PriorityLevel.NEWLY_LEARNED)
+      .map(entry => entry.item);
+      
+    if (newlyLearned.length >= 4) {
+      return newlyLearned.slice(0, 4);
+    }
+    
+    // If we don't have enough strictly "newly learned" by the planner's definition,
+    // just return the 4 most recently created items overall.
+    const byDate = [...all].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return byDate.slice(0, 4);
+  },
+
+  getTotalCount: async (): Promise<number> => {
     if (!isSupabaseConfigured) {
       const { items } = getLocalStore();
-      return items.filter(i => new Date(i.reviewState.nextReviewDate).getTime() <= Date.now());
+      return items.length;
     }
 
     try {
-      const now = new Date().toISOString();
-      const { data, error } = await supabase
+      const { count, error } = await supabase
         .from('knowledge_items')
-        .select('*, review_states!inner(*)')
-        .lte('review_states.next_review_date', now);
+        .select('*', { count: 'exact', head: true });
         
-      if (error || !data || data.length === 0) {
+      if (error || count === null) {
         const { items } = getLocalStore();
-        return items.filter(i => new Date(i.reviewState.nextReviewDate).getTime() <= Date.now());
+        return items.length;
       }
-      return data.map(mapToKnowledgeItem);
+      return count;
     } catch {
       const { items } = getLocalStore();
-      return items.filter(i => new Date(i.reviewState.nextReviewDate).getTime() <= Date.now());
+      return items.length;
     }
+  },
+
+  getRandomConcept: async (): Promise<KnowledgeItem | undefined> => {
+    const all = await KnowledgeService.getAll();
+    if (all.length === 0) return undefined;
+    const randomIndex = Math.floor(Math.random() * all.length);
+    return all[randomIndex];
   },
 
   addConcept: async (concept: KnowledgeItem): Promise<void> => {
@@ -429,6 +469,44 @@ export const KnowledgeService = {
     }
   },
 
+  updateConcept: async (id: string, updates: Partial<KnowledgeItem>): Promise<void> => {
+    // 1. Local store persistence
+    const { items, rels } = getLocalStore();
+    const existingIndex = items.findIndex(i => i.id === id);
+    if (existingIndex > -1) {
+      items[existingIndex] = { ...items[existingIndex], ...updates };
+      saveLocalStore(items, rels);
+    }
+
+    if (!isSupabaseConfigured) return;
+
+    // 2. Supabase persistence
+    try {
+      const payload: any = {};
+      if (updates.title !== undefined) payload.title = updates.title;
+      if (updates.summary !== undefined) payload.summary = updates.summary;
+      if (updates.fullContent !== undefined) payload.full_content = updates.fullContent;
+      if (updates.embedding !== undefined) payload.embedding = updates.embedding;
+
+      if (Object.keys(payload).length > 0) {
+        const { error } = await supabase
+          .from('knowledge_items')
+          .update(payload)
+          .eq('id', id);
+          
+        if (error) console.warn('Supabase knowledge_items update warning:', error);
+      }
+    } catch (e) {
+      console.warn('Supabase update skipped or failed:', e);
+    }
+  },
+
+  checkDuplicateTitle: async (title: string, ignoreId?: string): Promise<KnowledgeItem | undefined> => {
+    const all = await KnowledgeService.getAll();
+    const normalizedTitle = title.toLowerCase().trim();
+    return all.find(item => item.title.toLowerCase().trim() === normalizedTitle && item.id !== ignoreId);
+  },
+
   updateReviewState: async (itemId: string, newState: any): Promise<void> => {
     const { items, rels } = getLocalStore();
     const target = items.find(i => i.id === itemId);
@@ -456,6 +534,56 @@ export const KnowledgeService = {
         .eq('item_id', itemId);
     } catch (e) {
       console.warn('Supabase updateReviewState warning:', e);
+    }
+  },
+
+  addConnection: async (sourceId: string, targetId: string): Promise<void> => {
+    if (sourceId === targetId) return;
+
+    // 1. Local Store
+    const { items, rels } = getLocalStore();
+    const exists = rels.some(([s, t]) => (s === sourceId && t === targetId) || (s === targetId && t === sourceId));
+    if (!exists) {
+      saveLocalStore(items, [...rels, [sourceId, targetId]]);
+    }
+
+    if (!isSupabaseConfigured) return;
+
+    // 2. Supabase
+    try {
+      // Check if it already exists to avoid duplicate rows, though UI should prevent this.
+      const { data } = await supabase
+        .from('related_concepts')
+        .select('*')
+        .or(`and(source_item_id.eq.${sourceId},target_item_id.eq.${targetId}),and(source_item_id.eq.${targetId},target_item_id.eq.${sourceId})`);
+      
+      if (!data || data.length === 0) {
+        await supabase.from('related_concepts').insert({
+          source_item_id: sourceId,
+          target_item_id: targetId
+        });
+      }
+    } catch (e) {
+      console.warn('Supabase addConnection failed:', e);
+    }
+  },
+
+  removeConnection: async (sourceId: string, targetId: string): Promise<void> => {
+    // 1. Local Store
+    const { items, rels } = getLocalStore();
+    const newRels = rels.filter(([s, t]) => !((s === sourceId && t === targetId) || (s === targetId && t === sourceId)));
+    saveLocalStore(items, newRels);
+
+    if (!isSupabaseConfigured) return;
+
+    // 2. Supabase
+    try {
+      await supabase
+        .from('related_concepts')
+        .delete()
+        .or(`and(source_item_id.eq.${sourceId},target_item_id.eq.${targetId}),and(source_item_id.eq.${targetId},target_item_id.eq.${sourceId})`);
+    } catch (e) {
+      console.warn('Supabase removeConnection failed:', e);
     }
   }
 };

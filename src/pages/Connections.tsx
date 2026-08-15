@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { KnowledgeService } from '../lib/dataService';
 import { ConceptMap } from '../components/ConceptMap';
+import { ConnectionManager } from '../components/ConnectionManager';
+import { useExplorationHistory } from '../lib/useExplorationHistory';
 import type { KnowledgeItem } from '../lib/types';
 
 export function Connections() {
@@ -62,6 +64,8 @@ export function Connections() {
     );
   }
 
+  const history = useExplorationHistory(selectedConcept);
+
   return (
     <div style={{ width: '100%', maxWidth: '1000px', margin: '0 auto' }}>
       <div style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
@@ -69,9 +73,26 @@ export function Connections() {
           <h1 style={{ fontSize: '2rem', fontWeight: 600, color: 'var(--color-text-obsidian)', margin: '0 0 0.5rem 0' }}>
             Connections Explorer
           </h1>
-          <p style={{ color: 'var(--color-text-secondary)', margin: 0, fontSize: '0.95rem' }}>
+          <p style={{ color: 'var(--color-text-secondary)', margin: 0, fontSize: '0.95rem', marginBottom: '0.5rem' }}>
             Explore the associative links connecting your ideas and mental models.
           </p>
+          {history.length > 1 && (
+            <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.5rem' }}>
+              <span style={{ textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.05em' }}>History: </span>
+              {history.slice(0, -1).map((h, i) => (
+                <React.Fragment key={i}>
+                  <button 
+                    onClick={() => handleSelectConcept(h.id)} 
+                    style={{ background: 'none', border: 'none', color: 'var(--color-text-secondary)', cursor: 'pointer', padding: 0, fontSize: '0.8rem' }}
+                  >
+                    {h.title}
+                  </button>
+                  <span>→</span>
+                </React.Fragment>
+              ))}
+              <span style={{ color: 'var(--color-text-obsidian)', fontWeight: 500 }}>{history[history.length - 1].title}</span>
+            </div>
+          )}
         </div>
 
         {selectedConcept && (
@@ -215,6 +236,29 @@ export function Connections() {
                 onSelectConcept={handleSelectConcept}
                 showExploreLink={false}
               />
+
+              <div style={{ 
+                backgroundColor: 'var(--color-card-bg)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-md)',
+                padding: '1.5rem',
+                marginTop: '1.5rem'
+              }}>
+                <ConnectionManager
+                  currentConceptId={selectedConcept.id}
+                  currentConceptTitle={selectedConcept.title}
+                  currentConceptSummary={selectedConcept.summary}
+                  existingConnections={selectedConcept.relatedConcepts || []}
+                  onConnectionAdded={async () => {
+                    const updated = await KnowledgeService.getById(selectedConcept.id);
+                    if (updated) setSelectedConcept(updated);
+                  }}
+                  onConnectionRemoved={async () => {
+                    const updated = await KnowledgeService.getById(selectedConcept.id);
+                    if (updated) setSelectedConcept(updated);
+                  }}
+                />
+              </div>
             </div>
           ) : (
             <div style={{ textAlign: 'center', color: 'var(--color-text-secondary)', padding: '3rem' }}>
