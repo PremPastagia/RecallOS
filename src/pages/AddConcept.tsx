@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { KnowledgeService } from '../lib/mockData';
+import { KnowledgeService } from '../lib/dataService';
 import type { KnowledgeItem } from '../lib/types';
 
 export function AddConcept() {
@@ -18,7 +18,8 @@ export function AddConcept() {
     
     try {
       // Get a list of existing concepts for deduplication context
-      const existingConcepts = KnowledgeService.getAll().map(c => ({
+      const allConcepts = await KnowledgeService.getAll();
+      const existingConcepts = allConcepts.map((c: KnowledgeItem) => ({
         id: c.id,
         title: c.title,
         summary: c.summary
@@ -56,13 +57,19 @@ export function AddConcept() {
           interval: 1,
           easeFactor: 2.5
         },
-        relatedConcepts: (data.relatedConceptIds || []).map((relId: string) => {
-          const existing = KnowledgeService.getById(relId);
-          return existing ? { id: relId, title: existing.title } : null;
-        }).filter(Boolean)
+        relatedConcepts: []
       };
 
-      KnowledgeService.addConcept(newConcept);
+      // Resolve related concepts asynchronously
+      const relatedIds = data.relatedConceptIds || [];
+      const relatedPromises = relatedIds.map((relId: string) => KnowledgeService.getById(relId));
+      const relatedResults = await Promise.all(relatedPromises);
+      
+      newConcept.relatedConcepts = relatedResults
+        .filter(Boolean)
+        .map((existing: any) => ({ id: existing.id, title: existing.title }));
+
+      await KnowledgeService.addConcept(newConcept);
       navigate(`/knowledge/${newId}`);
     } catch (err: any) {
       console.error(err);
