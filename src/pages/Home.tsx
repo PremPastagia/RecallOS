@@ -1,28 +1,10 @@
-
-
-// Mock data to scaffold the UI without a backend
-const mockDailyQueue = [
-  {
-    id: '1',
-    title: 'First Principles Thinking',
-    summary: 'Deconstruct problems to fundamental truths and reconstruct from the ground up.',
-    strength: 0.85
-  },
-  {
-    id: '2',
-    title: 'Inversion Principle',
-    summary: 'Address complex problems by considering the opposite of what you want to achieve.',
-    strength: 0.60
-  },
-  {
-    id: '3',
-    title: 'Expected Value Framework',
-    summary: 'Mathematical model for decisions with uncertain outcomes and probabilities.',
-    strength: 0.92
-  }
-];
+import { Link } from 'react-router-dom';
+import { KnowledgeService } from '../lib/mockData';
 
 export function Home() {
+  const queue = KnowledgeService.getDueForReview();
+  const recent = KnowledgeService.getAll().slice(0, 3);
+
   return (
     <>
       {/* Search / Input */}
@@ -38,27 +20,36 @@ export function Home() {
       <section className="queue-section">
         <h2 className="section-title">Daily Memory Recall Queue</h2>
         
-        <div className="queue-grid">
-          {mockDailyQueue.map((concept) => (
-            <div key={concept.id} className="concept-card">
-              <h3 className="concept-title">{concept.title}</h3>
-              <p className="concept-summary">{concept.summary}</p>
-              <div className="memory-indicator">
-                <span>Memory strength</span>
-                <div className="ring-icon" style={{ opacity: Math.max(0.3, concept.strength) }}></div>
-              </div>
-            </div>
-          ))}
-        </div>
+        {queue.length === 0 ? (
+          <p style={{ color: 'var(--color-text-secondary)' }}>You have no concepts due for review today.</p>
+        ) : (
+          <div className="queue-grid">
+            {queue.map((concept) => (
+              <Link to={`/knowledge/${concept.id}`} key={concept.id} className="concept-card">
+                <h3 className="concept-title">{concept.title}</h3>
+                <p className="concept-summary">{concept.summary}</p>
+                <div className="memory-indicator">
+                  <span>Memory strength</span>
+                  <div className="ring-icon" style={{ opacity: Math.max(0.3, concept.reviewState.strength) }}></div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Recent Intellectual Explorations */}
       <section className="queue-section" style={{ marginTop: '2rem' }}>
         <h2 className="section-title">Recent Intellectual Explorations</h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <p><strong>Second-Order Thinking</strong> - Considering long-term systemic consequences</p>
-          <p><strong>Bayesian Updating</strong> - Adjusting beliefs based on new evidence</p>
-          <p><strong>Map is not the Territory</strong> - Models are abstractions of reality</p>
+          {recent.map((concept) => (
+            <p key={concept.id}>
+              <Link to={`/knowledge/${concept.id}`} style={{ fontWeight: 600 }}>
+                {concept.title}
+              </Link>
+              {' - '}{concept.summary}
+            </p>
+          ))}
         </div>
       </section>
     </>
