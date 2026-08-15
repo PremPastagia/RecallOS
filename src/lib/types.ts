@@ -3,6 +3,18 @@ export interface RelatedConcept {
   title: string;
 }
 
+export type ReviewGrade = 'Again' | 'Hard' | 'Good' | 'Easy';
+
+export interface Question {
+  id: string; // concept id
+  conceptTitle: string;
+  type: 'multiple_choice' | 'direct_recall';
+  question: string;
+  options?: string[]; // for multiple choice
+  correctAnswer: string;
+  explanation: string;
+}
+
 export interface ReviewQuestion {
   id: string;
   question: string;

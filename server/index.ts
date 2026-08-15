@@ -78,6 +78,61 @@ app.post('/api/generate-concept', async (req, res) => {
     console.error('Gemini API Error:', error);
     res.status(500).json({ error: 'Failed to generate concept' });
   }
+app.post('/api/generate-questions', async (req, res) => {
+  try {
+    const { concepts } = req.body;
+    if (!concepts || !Array.isArray(concepts)) {
+      return res.status(400).json({ error: 'Concepts array is required' });
+    }
+
+    const systemInstruction = `
+      You are Smriti, an AI memory test generator.
+      For the provided list of concepts, generate exactly one review question for each concept.
+      Vary the question type between "multiple_choice" and "direct_recall".
+      Keep questions challenging but concise. Do not test trivial wording; test fundamental understanding.
+      For multiple choice, provide exactly 4 options.
+    `;
+
+    const contents = `Generate questions for these concepts:\n\n` + 
+      concepts.map((c: any) => `ID: ${c.id}\nTitle: ${c.title}\nContent: ${c.fullContent}`).join('\n\n---\n\n');
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.6-flash',
+      contents,
+      config: {
+        systemInstruction,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING, description: "The ID of the concept this question is for" },
+              conceptTitle: { type: Type.STRING, description: "The title of the concept" },
+              type: { type: Type.STRING, description: "Either 'multiple_choice' or 'direct_recall'" },
+              question: { type: Type.STRING, description: "The question text" },
+              options: { 
+                type: Type.ARRAY, 
+                items: { type: Type.STRING }, 
+                description: "4 options if multiple choice, otherwise empty or null" 
+              },
+              correctAnswer: { type: Type.STRING, description: "The correct answer or concept essence" },
+              explanation: { type: Type.STRING, description: "A concise 1-sentence explanation of why the answer is correct" }
+            },
+            required: ["id", "conceptTitle", "type", "question", "correctAnswer", "explanation"]
+          }
+        }
+      }
+    });
+
+    const resultText = response.text || '[]';
+    const parsedData = JSON.parse(resultText);
+
+    res.json(parsedData);
+  } catch (error: any) {
+    console.error('Gemini API Error (generate-questions):', error);
+    res.status(500).json({ error: 'Failed to generate review questions' });
+  }
 });
 
 app.listen(PORT, () => {

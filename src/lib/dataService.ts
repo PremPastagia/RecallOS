@@ -77,6 +77,20 @@ export const KnowledgeService = {
     if (reviewError) throw reviewError;
     
     // Optional: handle related concepts if needed
+  },
+
+  updateReviewState: async (itemId: string, newState: any): Promise<void> => {
+    const { error } = await supabase
+      .from('review_states')
+      .update({
+        next_review_date: newState.nextReviewDate,
+        strength: newState.strength,
+        interval: newState.interval,
+        ease_factor: newState.easeFactor
+      })
+      .eq('item_id', itemId);
+      
+    if (error) throw error;
   }
 };
 
