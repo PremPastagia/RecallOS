@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { KnowledgeService } from '../lib/dataService';
+import { ConceptMap } from '../components/ConceptMap';
 import type { KnowledgeItem } from '../lib/types';
 
 export function KnowledgeDetail() {
@@ -12,6 +13,7 @@ export function KnowledgeDetail() {
     async function loadItem() {
       if (!id) return;
       try {
+        setLoading(true);
         const data = await KnowledgeService.getById(id);
         setItem(data || null);
       } catch (err) {
@@ -23,11 +25,51 @@ export function KnowledgeDetail() {
     loadItem();
   }, [id]);
 
-  if (loading) return <div style={{ color: 'var(--color-text-secondary)' }}>Loading concept...</div>;
+  // Helper to render markdown links like [Concept](/knowledge/id) cleanly
+  const renderFormattedContent = (content: string) => {
+    if (!content) return null;
+    
+    // Split by markdown link pattern [text](/knowledge/id)
+    const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = linkRegex.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(content.substring(lastIndex, match.index));
+      }
+      const label = match[1];
+      const url = match[2];
+      parts.push(
+        <Link
+          key={match.index}
+          to={url}
+          style={{
+            color: 'var(--color-accent-terracotta)',
+            textDecoration: 'underline',
+            textUnderlineOffset: '3px',
+            fontWeight: 500
+          }}
+        >
+          {label}
+        </Link>
+      );
+      lastIndex = match.index + match[0].length;
+    }
+
+    if (lastIndex < content.length) {
+      parts.push(content.substring(lastIndex));
+    }
+
+    return parts;
+  };
+
+  if (loading) return <div style={{ color: 'var(--color-text-secondary)', marginTop: '2rem' }}>Loading concept...</div>;
   
   if (!item) return (
     <div style={{ textAlign: 'center', marginTop: '4rem' }}>
-      <h2 style={{ color: 'var(--color-text)' }}>Concept not found</h2>
+      <h2 style={{ color: 'var(--color-text-obsidian)' }}>Concept not found</h2>
       <Link to="/" style={{ color: 'var(--color-accent-terracotta)', textDecoration: 'none' }}>Return to Home</Link>
     </div>
   );
@@ -35,46 +77,35 @@ export function KnowledgeDetail() {
   return (
     <div style={{ width: '100%', maxWidth: '800px', margin: '0 auto' }}>
       <Link to="/" style={{ color: 'var(--color-text-secondary)', textDecoration: 'none', display: 'inline-block', marginBottom: '2rem' }}>
-        ← Back
+        ← Back to Queue
       </Link>
       
       <article>
-        <h1 style={{ fontSize: '2.5rem', fontWeight: 600, margin: '0 0 1rem 0', color: 'var(--color-text)', letterSpacing: '-0.02em' }}>
+        <h1 style={{ fontSize: '2.5rem', fontWeight: 600, margin: '0 0 1rem 0', color: 'var(--color-text-obsidian)', letterSpacing: '-0.02em' }}>
           {item.title}
         </h1>
         
-        <p style={{ fontSize: '1.25rem', color: 'var(--color-text-secondary)', lineHeight: 1.6, margin: '0 0 3rem 0', borderLeft: '3px solid var(--color-accent-terracotta)', paddingLeft: '1.5rem' }}>
+        <p style={{
+          fontSize: '1.25rem',
+          color: 'var(--color-text-secondary)',
+          lineHeight: 1.6,
+          margin: '0 0 3rem 0',
+          borderLeft: '3px solid var(--color-accent-terracotta)',
+          paddingLeft: '1.5rem'
+        }}>
           {item.summary}
         </p>
 
-        <div style={{ fontSize: '1.1rem', lineHeight: 1.8, color: 'var(--color-text)', whiteSpace: 'pre-wrap' }}>
-          {item.fullContent}
+        <div style={{ fontSize: '1.1rem', lineHeight: 1.8, color: 'var(--color-text-obsidian)', whiteSpace: 'pre-wrap', marginBottom: '2rem' }}>
+          {renderFormattedContent(item.fullContent)}
         </div>
 
-        {item.relatedConcepts && item.relatedConcepts.length > 0 && (
-          <div style={{ marginTop: '4rem', paddingTop: '2rem', borderTop: '1px solid var(--color-border)' }}>
-            <h3 style={{ fontSize: '1.2rem', color: 'var(--color-text)', marginBottom: '1rem' }}>Related Concepts</h3>
-            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-              {item.relatedConcepts.map(related => (
-                <Link 
-                  key={related.id} 
-                  to={`/knowledge/${related.id}`}
-                  style={{ 
-                    backgroundColor: 'var(--color-bg)', 
-                    border: '1px solid var(--color-border)',
-                    padding: '0.5rem 1rem',
-                    borderRadius: 'var(--radius-sm)',
-                    textDecoration: 'none',
-                    color: 'var(--color-text-secondary)',
-                    fontSize: '0.9rem'
-                  }}
-                >
-                  {related.title}
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Lightweight Visual Relationship Map */}
+        <ConceptMap
+          currentConceptId={item.id}
+          currentConceptTitle={item.title}
+          relatedConcepts={item.relatedConcepts || []}
+        />
       </article>
     </div>
   );

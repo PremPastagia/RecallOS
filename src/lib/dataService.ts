@@ -1,97 +1,462 @@
-import { supabase } from './supabase';
-import type { KnowledgeItem } from './types';
+import { supabase, isSupabaseConfigured } from './supabase';
+import type { KnowledgeItem, RelatedConcept } from './types';
+
+// Default seed data for local testing & offline fallback
+const SEED_CONCEPTS: KnowledgeItem[] = [
+  {
+    id: 'k_1001',
+    title: 'GARCH Model',
+    summary: 'A statistical model used in econometrics to estimate the volatility of financial returns.',
+    fullContent: 'Generalized AutoRegressive Conditional Heteroskedasticity (GARCH) is a statistical model used in analyzing time-series data where the variance error is believed to be serially autocorrelated. It is primarily used to model financial time series that exhibit time-varying volatility and volatility clustering.',
+    createdAt: new Date(Date.now() - 86400000).toISOString(),
+    reviewState: {
+      nextReviewDate: new Date(Date.now() - 86400000).toISOString(),
+      strength: 0,
+      interval: 1,
+      easeFactor: 2.5
+    },
+    relatedConcepts: []
+  },
+  {
+    id: 'k_1002',
+    title: 'First Principles Thinking',
+    summary: 'A problem-solving approach that involves breaking down a problem into its fundamental truths.',
+    fullContent: 'First principles thinking is the act of boiling a process down to the fundamental parts that you know are true and building up from there. It is one of the most effective strategies you can employ for dealing with complicated problems and generating original solutions. It also removes the impurity of assumptions and conventions.',
+    createdAt: new Date(Date.now() - 172800000).toISOString(),
+    reviewState: {
+      nextReviewDate: new Date(Date.now() - 172800000).toISOString(),
+      strength: 1,
+      interval: 3,
+      easeFactor: 2.6
+    },
+    relatedConcepts: []
+  },
+  {
+    id: 'k_1003',
+    title: 'Bullwhip Effect',
+    summary: 'A supply chain phenomenon where small fluctuations in retail demand cause progressively larger fluctuations in wholesale, distributor, and manufacturer demand.',
+    fullContent: 'The bullwhip effect occurs when the demand for a product changes, and those changes are amplified as they move further up the supply chain. This leads to inefficient production, excessive inventory, and higher costs.',
+    createdAt: new Date(Date.now() - 259200000).toISOString(),
+    reviewState: {
+      nextReviewDate: new Date(Date.now() + 86400000).toISOString(),
+      strength: 2,
+      interval: 7,
+      easeFactor: 2.7
+    },
+    relatedConcepts: []
+  },
+  {
+    id: 'k_1004',
+    title: 'Pareidolia',
+    summary: 'The psychological tendency to perceive a specific, often meaningful image in a random or ambiguous visual pattern.',
+    fullContent: 'Pareidolia is a type of apophenia, which is a more generalized term for seeing patterns in random data. The most common form of pareidolia is seeing faces in inanimate objects, such as clouds, rocks, or toast.',
+    createdAt: new Date(Date.now() - 345600000).toISOString(),
+    reviewState: {
+      nextReviewDate: new Date(Date.now() + 172800000).toISOString(),
+      strength: 3,
+      interval: 14,
+      easeFactor: 2.8
+    },
+    relatedConcepts: []
+  },
+  {
+    id: 'k_1005',
+    title: 'Spaced Repetition',
+    summary: 'An evidence-based learning technique that incorporates increasing intervals of time between subsequent review of previously learned material.',
+    fullContent: 'Spaced repetition leverages the spacing effect, which asserts that learning is greater when studying is spread out over time. It is highly effective for vocabulary acquisition, law, medicine, and other fields requiring significant memorization.',
+    createdAt: new Date(Date.now() - 432000000).toISOString(),
+    reviewState: {
+      nextReviewDate: new Date(Date.now() - 259200000).toISOString(),
+      strength: 0,
+      interval: 1,
+      easeFactor: 2.5
+    },
+    relatedConcepts: []
+  }
+];
+
+const SEED_RELATIONSHIPS: [string, string][] = [
+  ['k_1001', 'k_1003'], // GARCH <-> Bullwhip Effect
+  ['k_1001', 'k_1004'], // GARCH <-> Pareidolia
+  ['k_1002', 'k_1005'], // First Principles <-> Spaced Repetition
+  ['k_1002', 'k_1004'], // First Principles <-> Pareidolia
+  ['k_1002', 'k_1001']  // First Principles <-> GARCH Model
+];
+
+const LOCAL_STORAGE_KEY = 'smriti_knowledge_items';
+const LOCAL_STORAGE_RELS_KEY = 'smriti_related_concepts';
+
+function getLocalStore(): { items: KnowledgeItem[]; rels: [string, string][] } {
+  try {
+    const rawItems = localStorage.getItem(LOCAL_STORAGE_KEY);
+    const rawRels = localStorage.getItem(LOCAL_STORAGE_RELS_KEY);
+    
+    let items: KnowledgeItem[] = rawItems ? JSON.parse(rawItems) : [...SEED_CONCEPTS];
+    let rels: [string, string][] = rawRels ? JSON.parse(rawRels) : [...SEED_RELATIONSHIPS];
+
+    // Ensure baseline seed concepts always exist
+    const itemIds = new Set(items.map(i => i.id));
+    for (const seed of SEED_CONCEPTS) {
+      if (!itemIds.has(seed.id)) {
+        items.push(seed);
+      }
+    }
+
+    return { items, rels };
+  } catch {
+    return { items: [...SEED_CONCEPTS], rels: [...SEED_RELATIONSHIPS] };
+  }
+}
+
+function saveLocalStore(items: KnowledgeItem[], rels: [string, string][]) {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(items));
+    localStorage.setItem(LOCAL_STORAGE_RELS_KEY, JSON.stringify(rels));
+  } catch (e) {
+    console.error('Failed to save to localStorage', e);
+  }
+}
+
+function getLocalRelated(id: string): RelatedConcept[] {
+  const { items, rels } = getLocalStore();
+  const relatedIds = new Set<string>();
+
+  for (const [src, tgt] of rels) {
+    if (src === id && tgt !== id) relatedIds.add(tgt);
+    if (tgt === id && src !== id) relatedIds.add(src);
+  }
+
+  const results: RelatedConcept[] = [];
+  for (const relId of relatedIds) {
+    const target = items.find(i => i.id === relId);
+    if (target) {
+      results.push({
+        id: target.id,
+        title: target.title,
+        summary: target.summary
+      });
+    }
+  }
+  return results;
+}
 
 export const KnowledgeService = {
   getAll: async (): Promise<KnowledgeItem[]> => {
-    const { data, error } = await supabase
-      .from('knowledge_items')
-      .select('*, review_states(*)')
-      .order('created_at', { ascending: false });
+    if (!isSupabaseConfigured) {
+      const { items } = getLocalStore();
+      return items.map(item => ({
+        ...item,
+        relatedConcepts: getLocalRelated(item.id)
+      }));
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('knowledge_items')
+        .select('*, review_states(*)')
+        .order('created_at', { ascending: false });
+        
+      if (error || !data || data.length === 0) {
+        const { items } = getLocalStore();
+        return items.map(item => ({
+          ...item,
+          relatedConcepts: getLocalRelated(item.id)
+        }));
+      }
       
-    if (error) throw error;
-    
-    return data.map(mapToKnowledgeItem);
+      return data.map(mapToKnowledgeItem);
+    } catch {
+      const { items } = getLocalStore();
+      return items.map(item => ({
+        ...item,
+        relatedConcepts: getLocalRelated(item.id)
+      }));
+    }
   },
 
   getById: async (id: string): Promise<KnowledgeItem | undefined> => {
-    const { data, error } = await supabase
-      .from('knowledge_items')
-      .select('*, review_states(*)')
-      .eq('id', id)
-      .single();
-      
-    if (error || !data) return undefined;
-    return mapToKnowledgeItem(data);
+    if (!isSupabaseConfigured) {
+      const { items } = getLocalStore();
+      const found = items.find(i => i.id === id);
+      if (!found) return undefined;
+      return {
+        ...found,
+        relatedConcepts: getLocalRelated(found.id)
+      };
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('knowledge_items')
+        .select('*, review_states(*)')
+        .eq('id', id)
+        .single();
+        
+      if (error || !data) {
+        const { items } = getLocalStore();
+        const found = items.find(i => i.id === id);
+        if (!found) return undefined;
+        return {
+          ...found,
+          relatedConcepts: getLocalRelated(found.id)
+        };
+      }
+
+      const item = mapToKnowledgeItem(data);
+      item.relatedConcepts = await KnowledgeService.getRelatedConcepts(id);
+      return item;
+    } catch {
+      const { items } = getLocalStore();
+      const found = items.find(i => i.id === id);
+      if (!found) return undefined;
+      return {
+        ...found,
+        relatedConcepts: getLocalRelated(found.id)
+      };
+    }
+  },
+
+  getRelatedConcepts: async (id: string): Promise<RelatedConcept[]> => {
+    if (!isSupabaseConfigured) {
+      return getLocalRelated(id);
+    }
+
+    try {
+      // 1. Fetch relationships from related_concepts table (both directions)
+      const [outRes, inRes] = await Promise.all([
+        supabase.from('related_concepts').select('target_item_id').eq('source_item_id', id),
+        supabase.from('related_concepts').select('source_item_id').eq('target_item_id', id)
+      ]);
+
+      const relatedIds = new Set<string>();
+      outRes.data?.forEach(r => r.target_item_id && relatedIds.add(r.target_item_id));
+      inRes.data?.forEach(r => r.source_item_id && relatedIds.add(r.source_item_id));
+      relatedIds.delete(id);
+
+      if (relatedIds.size === 0) {
+        return getLocalRelated(id);
+      }
+
+      // 2. Fetch concept details for all valid target items
+      const { data: items, error } = await supabase
+        .from('knowledge_items')
+        .select('id, title, summary')
+        .in('id', Array.from(relatedIds));
+
+      if (error || !items || items.length === 0) {
+        return getLocalRelated(id);
+      }
+
+      // Gracefully filter out invalid or deleted items
+      return items
+        .filter(item => item && item.id && item.title)
+        .map(item => ({
+          id: item.id,
+          title: item.title,
+          summary: item.summary || ''
+        }));
+    } catch {
+      return getLocalRelated(id);
+    }
+  },
+
+  getAllConnections: async (): Promise<{ source: string; target: string; sourceTitle: string; targetTitle: string }[]> => {
+    if (!isSupabaseConfigured) {
+      const { items, rels } = getLocalStore();
+      const itemMap = new Map(items.map(i => [i.id, i.title]));
+      return rels
+        .filter(([src, tgt]) => itemMap.has(src) && itemMap.has(tgt))
+        .map(([src, tgt]) => ({
+          source: src,
+          target: tgt,
+          sourceTitle: itemMap.get(src) || src,
+          targetTitle: itemMap.get(tgt) || tgt
+        }));
+    }
+
+    try {
+      const { data: relsData, error: relsErr } = await supabase
+        .from('related_concepts')
+        .select('source_item_id, target_item_id');
+
+      if (relsErr || !relsData || relsData.length === 0) {
+        const { items, rels } = getLocalStore();
+        const itemMap = new Map(items.map(i => [i.id, i.title]));
+        return rels
+          .filter(([src, tgt]) => itemMap.has(src) && itemMap.has(tgt))
+          .map(([src, tgt]) => ({
+            source: src,
+            target: tgt,
+            sourceTitle: itemMap.get(src) || src,
+            targetTitle: itemMap.get(tgt) || tgt
+          }));
+      }
+
+      const allItems = await KnowledgeService.getAll();
+      const itemMap = new Map(allItems.map(i => [i.id, i.title]));
+
+      return relsData
+        .filter(r => itemMap.has(r.source_item_id) && itemMap.has(r.target_item_id))
+        .map(r => ({
+          source: r.source_item_id,
+          target: r.target_item_id,
+          sourceTitle: itemMap.get(r.source_item_id) || r.source_item_id,
+          targetTitle: itemMap.get(r.target_item_id) || r.target_item_id
+        }));
+    } catch {
+      const { items, rels } = getLocalStore();
+      const itemMap = new Map(items.map(i => [i.id, i.title]));
+      return rels
+        .filter(([src, tgt]) => itemMap.has(src) && itemMap.has(tgt))
+        .map(([src, tgt]) => ({
+          source: src,
+          target: tgt,
+          sourceTitle: itemMap.get(src) || src,
+          targetTitle: itemMap.get(tgt) || tgt
+        }));
+    }
   },
 
   search: async (query: string): Promise<KnowledgeItem[]> => {
-    const { data, error } = await supabase
-      .from('knowledge_items')
-      .select('*, review_states(*)')
-      .ilike('title', `%${query}%`);
-      
-    if (error) throw error;
-    return data.map(mapToKnowledgeItem);
+    if (!isSupabaseConfigured) {
+      const { items } = getLocalStore();
+      const q = query.toLowerCase();
+      return items.filter(i => i.title.toLowerCase().includes(q) || i.summary.toLowerCase().includes(q));
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('knowledge_items')
+        .select('*, review_states(*)')
+        .ilike('title', `%${query}%`);
+        
+      if (error || !data || data.length === 0) {
+        const { items } = getLocalStore();
+        const q = query.toLowerCase();
+        return items.filter(i => i.title.toLowerCase().includes(q) || i.summary.toLowerCase().includes(q));
+      }
+      return data.map(mapToKnowledgeItem);
+    } catch {
+      const { items } = getLocalStore();
+      const q = query.toLowerCase();
+      return items.filter(i => i.title.toLowerCase().includes(q) || i.summary.toLowerCase().includes(q));
+    }
   },
 
   getDueForReview: async (): Promise<KnowledgeItem[]> => {
-    const now = new Date().toISOString();
-    const { data, error } = await supabase
-      .from('knowledge_items')
-      .select('*, review_states!inner(*)')
-      .lte('review_states.next_review_date', now);
-      
-    if (error) throw error;
-    return data.map(mapToKnowledgeItem);
+    if (!isSupabaseConfigured) {
+      const { items } = getLocalStore();
+      return items.filter(i => new Date(i.reviewState.nextReviewDate).getTime() <= Date.now());
+    }
+
+    try {
+      const now = new Date().toISOString();
+      const { data, error } = await supabase
+        .from('knowledge_items')
+        .select('*, review_states!inner(*)')
+        .lte('review_states.next_review_date', now);
+        
+      if (error || !data || data.length === 0) {
+        const { items } = getLocalStore();
+        return items.filter(i => new Date(i.reviewState.nextReviewDate).getTime() <= Date.now());
+      }
+      return data.map(mapToKnowledgeItem);
+    } catch {
+      const { items } = getLocalStore();
+      return items.filter(i => new Date(i.reviewState.nextReviewDate).getTime() <= Date.now());
+    }
   },
 
   addConcept: async (concept: KnowledgeItem): Promise<void> => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) throw new Error('User not authenticated');
+    // 1. Local store persistence
+    const { items, rels } = getLocalStore();
+    const updatedItems = [concept, ...items.filter(i => i.id !== concept.id)];
+    const newRels: [string, string][] = [...rels];
 
-    // 1. Insert into knowledge_items
-    const { error: itemError } = await supabase
-      .from('knowledge_items')
-      .insert({
-        id: concept.id,
-        user_id: session.user.id,
-        title: concept.title,
-        summary: concept.summary,
-        full_content: concept.fullContent,
-        embedding: concept.embedding, // Added for semantic search
-        created_at: concept.createdAt
-      });
-      
-    if (itemError) throw itemError;
+    if (concept.relatedConcepts && concept.relatedConcepts.length > 0) {
+      for (const rel of concept.relatedConcepts) {
+        const exists = newRels.some(([s, t]) => (s === concept.id && t === rel.id) || (s === rel.id && t === concept.id));
+        if (!exists) {
+          newRels.push([concept.id, rel.id]);
+        }
+      }
+    }
+    saveLocalStore(updatedItems, newRels);
 
-    // 2. Insert into review_states
-    const { error: reviewError } = await supabase
-      .from('review_states')
-      .insert({
-        item_id: concept.id,
-        next_review_date: concept.reviewState.nextReviewDate,
-        strength: concept.reviewState.strength,
-        interval: concept.reviewState.interval,
-        ease_factor: concept.reviewState.easeFactor
-      });
-      
-    if (reviewError) throw reviewError;
-    
-    // Optional: handle related concepts if needed
+    if (!isSupabaseConfigured) return;
+
+    // 2. Supabase persistence if authenticated
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      const { error: itemError } = await supabase
+        .from('knowledge_items')
+        .insert({
+          id: concept.id,
+          user_id: session.user.id,
+          title: concept.title,
+          summary: concept.summary,
+          full_content: concept.fullContent,
+          embedding: concept.embedding,
+          created_at: concept.createdAt
+        });
+        
+      if (itemError) console.warn('Supabase knowledge_items insert warning:', itemError);
+
+      const { error: reviewError } = await supabase
+        .from('review_states')
+        .insert({
+          item_id: concept.id,
+          next_review_date: concept.reviewState.nextReviewDate,
+          strength: concept.reviewState.strength,
+          interval: concept.reviewState.interval,
+          ease_factor: concept.reviewState.easeFactor
+        });
+        
+      if (reviewError) console.warn('Supabase review_states insert warning:', reviewError);
+
+      if (concept.relatedConcepts && concept.relatedConcepts.length > 0) {
+        const relations = concept.relatedConcepts.map(rel => ({
+          source_item_id: concept.id,
+          target_item_id: rel.id
+        }));
+        const { error: relError } = await supabase.from('related_concepts').insert(relations);
+        if (relError) console.warn('Supabase related_concepts insert warning:', relError);
+      }
+    } catch (e) {
+      console.warn('Supabase insert skipped or failed:', e);
+    }
   },
 
   updateReviewState: async (itemId: string, newState: any): Promise<void> => {
-    const { error } = await supabase
-      .from('review_states')
-      .update({
-        next_review_date: newState.nextReviewDate,
+    const { items, rels } = getLocalStore();
+    const target = items.find(i => i.id === itemId);
+    if (target) {
+      target.reviewState = {
+        nextReviewDate: newState.nextReviewDate,
         strength: newState.strength,
         interval: newState.interval,
-        ease_factor: newState.easeFactor
-      })
-      .eq('item_id', itemId);
-      
-    if (error) throw error;
+        easeFactor: newState.easeFactor
+      };
+      saveLocalStore(items, rels);
+    }
+
+    if (!isSupabaseConfigured) return;
+
+    try {
+      await supabase
+        .from('review_states')
+        .update({
+          next_review_date: newState.nextReviewDate,
+          strength: newState.strength,
+          interval: newState.interval,
+          ease_factor: newState.easeFactor
+        })
+        .eq('item_id', itemId);
+    } catch (e) {
+      console.warn('Supabase updateReviewState warning:', e);
+    }
   }
 };
 
@@ -115,6 +480,6 @@ function mapToKnowledgeItem(row: any): KnowledgeItem {
       easeFactor: 2.5
     },
     embedding: row.embedding,
-    relatedConcepts: [] // Skipping full resolution for brevity in prototype
+    relatedConcepts: []
   };
 }

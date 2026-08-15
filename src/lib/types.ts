@@ -1,6 +1,7 @@
 export interface RelatedConcept {
   id: string;
   title: string;
+  summary?: string;
 }
 
 export type ReviewGrade = 'Again' | 'Hard' | 'Good' | 'Easy';

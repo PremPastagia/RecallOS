@@ -18,3 +18,13 @@ INSERT INTO review_states (item_id, next_review_date, strength, interval, ease_f
 ('k_1004', NOW() + INTERVAL '2 days', 3, 14, 2.8),
 ('k_1005', NOW() - INTERVAL '3 days', 0, 1, 2.5)
 ON CONFLICT DO NOTHING;
+
+-- Seed Related Concepts
+INSERT INTO related_concepts (source_item_id, target_item_id) VALUES 
+('k_1001', 'k_1003'),
+('k_1001', 'k_1004'),
+('k_1002', 'k_1005'),
+('k_1002', 'k_1004'),
+('k_1002', 'k_1001')
+ON CONFLICT DO NOTHING;
+

@@ -73,6 +73,27 @@ export function Login() {
         >
           {loading ? 'Entering...' : 'Enter Vault'}
         </button>
+
+        <button 
+          type="button"
+          onClick={() => {
+            localStorage.setItem('smriti_user', JSON.stringify({ id: '00000000-0000-0000-0000-000000000000', email: 'scholar@smriti.local' }));
+            window.location.href = '/';
+          }}
+          style={{ 
+            width: '100%',
+            backgroundColor: 'transparent', 
+            color: 'var(--color-accent-terracotta)', 
+            border: '1px solid var(--color-border)', 
+            padding: '0.8rem', 
+            borderRadius: 'var(--radius-md)', 
+            fontSize: '0.95rem', 
+            fontWeight: 500,
+            cursor: 'pointer'
+          }}
+        >
+          ✦ Explore Demo Vault
+        </button>
       </form>
 
       <p style={{ textAlign: 'center', marginTop: '2rem', color: 'var(--color-text-secondary)' }}>

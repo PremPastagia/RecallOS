@@ -230,3 +230,49 @@ button {
   50% { opacity: 0.7; transform: scale(1.05); } 
   100% { opacity: 1; transform: scale(1); } 
 }
+
+/* Concept Map Styling */
+.concept-map-container {
+  width: 100%;
+}
+
+.related-node:focus-visible {
+  outline: 2px solid var(--color-accent-terracotta);
+  outline-offset: 2px;
+}
+
+.connections-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .nav-links {
+    flex-wrap: wrap;
+    gap: 0.75rem var(--spacing-sm);
+  }
+
+  .connections-layout {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .concept-map-container svg {
+    min-height: 240px;
+  }
+  
+  .concept-map-header {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 0.75rem !important;
+  }
+  
+  .concept-map-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+}

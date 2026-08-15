@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { User, Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -23,17 +23,53 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      const localUser = localStorage.getItem('smriti_user');
+      if (localUser) {
+        try {
+          setUser(JSON.parse(localUser));
+        } catch {
+          setUser(null);
+        }
+      }
+      setLoading(false);
+      return;
+    }
+
     // Check active session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+      if (session?.user) {
+        setSession(session);
+        setUser(session.user);
+      } else {
+        const localUser = localStorage.getItem('smriti_user');
+        if (localUser) {
+          try {
+            setUser(JSON.parse(localUser));
+          } catch {
+            setUser(null);
+          }
+        }
+      }
+      setLoading(false);
+    }).catch(() => {
+      const localUser = localStorage.getItem('smriti_user');
+      if (localUser) {
+        try {
+          setUser(JSON.parse(localUser));
+        } catch {
+          setUser(null);
+        }
+      }
       setLoading(false);
     });
 
     // Listen for changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+      if (session?.user) {
+        setSession(session);
+        setUser(session.user);
+      }
       setLoading(false);
     });
 
@@ -41,7 +77,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const signOut = async () => {
+    localStorage.removeItem('smriti_user');
     await supabase.auth.signOut();
+    setUser(null);
+    setSession(null);
   };
 
   return (

@@ -8,6 +8,7 @@ import { AddConcept } from './pages/AddConcept';
 import { Search } from './pages/Search';
 import { KnowledgeDetail } from './pages/KnowledgeDetail';
 import { Review } from './pages/Review';
+import { Connections } from './pages/Connections';
 import { Login } from './pages/Login';
 import { Signup } from './pages/Signup';
 import './index.css';
@@ -26,6 +27,7 @@ function App() {
               <Route path="add" element={<AddConcept />} />
               <Route path="search" element={<Search />} />
               <Route path="knowledge/:id" element={<KnowledgeDetail />} />
+              <Route path="connections" element={<Connections />} />
               <Route path="review" element={<Review />} />
             </Route>
           </Route>
