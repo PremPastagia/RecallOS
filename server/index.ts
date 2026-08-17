@@ -15,6 +15,110 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const PORT = 3001;
 
+// ─── Quality Validation ───────────────────────────────────────────────────────
+
+const FILLER_PHRASES = [
+  'in conclusion', 'as mentioned', 'it is important to note', 'in summary',
+  'to summarize', 'needless to say', 'it goes without saying',
+  'as i mentioned', 'to put it simply', 'simply put', 'as you can see',
+  'at the end of the day', 'having said that', 'that being said'
+];
+
+const MEANINGLESS_TITLES = new Set([
+  'concept', 'untitled', 'the concept', 'a concept', 'this concept',
+  'topic', 'idea', 'the idea', 'a topic', 'new concept', 'unknown', 'term'
+]);
+
+interface ConceptData {
+  title: string;
+  summary: string;
+  fullContent: string;
+  relatedConceptIds?: string[];
+}
+
+function validateConceptQuality(
+  data: ConceptData,
+  topRelevantConcepts: any[] = []
+): { valid: boolean; issues: string[] } {
+  const issues: string[] = [];
+  const title = (data.title || '').trim();
+  const summary = (data.summary || '').trim();
+  const fullContent = (data.fullContent || '').trim();
+
+  // Title
+  if (title.length < 2) {
+    issues.push('Title is missing or too short');
+  } else if (title.length > 120) {
+    issues.push('Title is excessively long — keep it concise');
+  } else if (MEANINGLESS_TITLES.has(title.toLowerCase())) {
+    issues.push('Title is not meaningful');
+  }
+
+  // Summary
+  if (summary.length < 8) {
+    issues.push('Summary is missing or too short');
+  } else if (summary.length > 450) {
+    issues.push('Summary is too long — keep to 1-2 sentences');
+  }
+
+  // Content length
+  if (fullContent.length > 2000) {
+    issues.push('Explanation is excessively long');
+  }
+
+  // Filler phrase overuse (only flag when 3+ distinct fillers appear)
+  const lowerText = `${summary} ${fullContent}`.toLowerCase();
+  const fillerCount = FILLER_PHRASES.filter(p => lowerText.includes(p)).length;
+  if (fillerCount >= 3) {
+    issues.push('Content contains excessive filler phrases');
+  }
+
+  // Invalid linked concept IDs
+  if (data.relatedConceptIds && data.relatedConceptIds.length > 0 && topRelevantConcepts.length > 0) {
+    const validIds = new Set(topRelevantConcepts.map((c: any) => c.id));
+    const invalidCount = data.relatedConceptIds.filter((id: string) => !validIds.has(id)).length;
+    if (invalidCount > 0) {
+      issues.push('Generated content references invalid concept links');
+    }
+  }
+
+  return { valid: issues.length === 0, issues };
+}
+
+const GENERATE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    title: { type: Type.STRING, description: 'Refined concept title. MUST NOT BE EMPTY.' },
+    summary: { type: Type.STRING, description: '1-2 sentence core distillation.' },
+    fullContent: { type: Type.STRING, description: 'Detailed structured explanation including inline markdown links.' },
+    relatedConceptIds: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: 'IDs of genuinely related existing concepts. No hallucinated IDs.'
+    }
+  },
+  required: ['title', 'summary', 'fullContent', 'relatedConceptIds']
+};
+
+const REGEN_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    title: { type: Type.STRING, description: 'Refined concept title.' },
+    summary: { type: Type.STRING, description: '1-2 sentence core distillation.' },
+    fullContent: { type: Type.STRING, description: 'Detailed structured explanation of the concept.' }
+  },
+  required: ['title', 'summary', 'fullContent']
+};
+
+function filterHallucinatedLinks(data: ConceptData, topRelevantConcepts: any[]): void {
+  if (data.relatedConceptIds && data.relatedConceptIds.length > 0) {
+    const validIds = new Set(topRelevantConcepts.map((c: any) => c.id));
+    data.relatedConceptIds = data.relatedConceptIds.filter((id: string) => validIds.has(id));
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 app.post('/api/generate-concept', async (req, res) => {
   try {
     const { rawInput, topRelevantConcepts = [], sourceContext } = req.body;
@@ -61,54 +165,73 @@ app.post('/api/generate-concept', async (req, res) => {
       config: {
         systemInstruction,
         responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING, description: "Refined concept title extracted from input. MUST NOT BE EMPTY." },
-            summary: { type: Type.STRING, description: "1-2 sentence core distillation." },
-            fullContent: { type: Type.STRING, description: "Detailed structured explanation of the concept, including inline markdown links." },
-            relatedConceptIds: { 
-              type: Type.ARRAY,
-              items: { type: Type.STRING },
-              description: "Array of IDs of the provided existing concepts that are genuinely related to this new concept. Do not include hallucinated IDs."
-            }
-          },
-          required: ["title", "summary", "fullContent", "relatedConceptIds"]
-        }
+        responseSchema: GENERATE_SCHEMA
       }
     });
 
-    const resultText = response.text || '{}';
-    const parsedData = JSON.parse(resultText);
-
-    // Backend Validation Step
-    if (!parsedData.title || parsedData.title.trim().length === 0) {
-      throw new Error("Validation Failed: Generated concept title is empty.");
-    }
-
-    if (parsedData.fullContent && parsedData.fullContent.length > 2000) {
-      throw new Error("Validation Failed: Generated explanation is excessively long.");
-    }
+    let parsedData: ConceptData & { embedding?: number[]; qualityNote?: string; requiresReview?: boolean; qualityIssues?: string[] } =
+      JSON.parse(response.text || '{}');
 
     // Filter hallucinated links
-    if (parsedData.relatedConceptIds && parsedData.relatedConceptIds.length > 0) {
-      const validIds = new Set(topRelevantConcepts.map((c: any) => c.id));
-      parsedData.relatedConceptIds = parsedData.relatedConceptIds.filter((id: string) => validIds.has(id));
+    filterHallucinatedLinks(parsedData, topRelevantConcepts);
+
+    // 2. Quality validation with one controlled retry
+    let validation = validateConceptQuality(parsedData, topRelevantConcepts);
+    let qualityNote: string | undefined;
+
+    if (!validation.valid) {
+      console.log('[Quality] Initial validation failed:', validation.issues);
+      try {
+        const retryResponse = await ai.models.generateContent({
+          model: 'gemini-3.6-flash',
+          contents: `User Input: ${rawInput}\n\nImportant: Your previous response had these quality issues — please fix them: ${validation.issues.join('; ')}. Be concise, meaningful, and avoid filler.`,
+          config: {
+            systemInstruction,
+            responseMimeType: 'application/json',
+            responseSchema: GENERATE_SCHEMA
+          }
+        });
+
+        const retryData: ConceptData = JSON.parse(retryResponse.text || '{}');
+        filterHallucinatedLinks(retryData, topRelevantConcepts);
+        const retryValidation = validateConceptQuality(retryData, topRelevantConcepts);
+
+        if (!retryValidation.valid) {
+          // Both attempts failed — return draft for user review, no embedding generated
+          console.warn('[Quality] Retry also failed:', retryValidation.issues);
+          return res.json({
+            ...retryData,
+            requiresReview: true,
+            qualityIssues: retryValidation.issues
+          });
+        }
+
+        parsedData = retryData;
+        qualityNote = 'Content was refined during quality check';
+      } catch (retryErr) {
+        console.warn('[Quality] Retry call failed, returning draft for review:', retryErr);
+        return res.json({
+          ...parsedData,
+          requiresReview: true,
+          qualityIssues: validation.issues
+        });
+      }
     }
 
-    // 2. Generate an embedding for it
-    const embedContents = `Title: ${parsedData.title}\n\nSummary: ${parsedData.summary}\n\nContent: ${parsedData.fullContent}` + 
+    // 3. Generate embedding (only after passing quality)
+    const embedContents = `Title: ${parsedData.title}\n\nSummary: ${parsedData.summary}\n\nContent: ${parsedData.fullContent}` +
       (sourceContext ? `\n\nSource: ${sourceContext}` : '');
 
     const embedResponse = await ai.models.embedContent({
       model: 'text-embedding-004',
       contents: embedContents
     });
-    
+
     if (embedResponse.embeddings && embedResponse.embeddings.length > 0) {
       parsedData.embedding = embedResponse.embeddings[0].values;
     }
 
+    if (qualityNote) parsedData.qualityNote = qualityNote;
     res.json(parsedData);
   } catch (error: any) {
     console.error('Gemini API Error:', error);
@@ -343,26 +466,48 @@ app.post('/api/regenerate-concept', async (req, res) => {
       config: {
         systemInstruction,
         responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING, description: "Refined concept title." },
-            summary: { type: Type.STRING, description: "1-2 sentence core distillation." },
-            fullContent: { type: Type.STRING, description: "Detailed structured explanation of the concept." }
-          },
-          required: ["title", "summary", "fullContent"]
-        }
+        responseSchema: REGEN_SCHEMA
       }
     });
 
-    const resultText = response.text || '{}';
-    const parsedData = JSON.parse(resultText);
+    let parsedData: ConceptData = JSON.parse(response.text || '{}');
 
-    // Backend Validation Step
-    if (!parsedData.title || parsedData.title.trim().length === 0) {
-      throw new Error("Validation Failed: Generated concept title is empty.");
+    // Quality validation with one controlled retry
+    let validation = validateConceptQuality(parsedData);
+
+    if (!validation.valid) {
+      console.log('[Quality/Regen] Initial validation failed:', validation.issues);
+      try {
+        const retryResponse = await ai.models.generateContent({
+          model: 'gemini-3.6-flash',
+          contents: `Improve and refine this concept:\nTitle: ${title}\nSummary: ${summary}\nContent: ${fullContent}\n\nFix these issues in your refinement: ${validation.issues.join('; ')}`,
+          config: {
+            systemInstruction,
+            responseMimeType: 'application/json',
+            responseSchema: REGEN_SCHEMA
+          }
+        });
+        const retryData: ConceptData = JSON.parse(retryResponse.text || '{}');
+        const retryValidation = validateConceptQuality(retryData);
+
+        if (!retryValidation.valid) {
+          return res.json({
+            ...retryData,
+            requiresReview: true,
+            qualityIssues: retryValidation.issues
+          });
+        }
+        parsedData = retryData;
+      } catch (retryErr) {
+        console.warn('[Quality/Regen] Retry failed, returning draft:', retryErr);
+        return res.json({
+          ...parsedData,
+          requiresReview: true,
+          qualityIssues: validation.issues
+        });
+      }
     }
-    
+
     res.json(parsedData);
   } catch (error: any) {
     console.error('Gemini API Error (regenerate):', error);

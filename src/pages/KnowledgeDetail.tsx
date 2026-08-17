@@ -24,6 +24,7 @@ export function KnowledgeDetail() {
   const [saving, setSaving] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [regenQualityIssues, setRegenQualityIssues] = useState<string[]>([]);
 
   useEffect(() => {
     async function loadItem() {
@@ -211,6 +212,15 @@ export function KnowledgeDetail() {
       }
 
       const data = await res.json();
+
+      // If quality check requires review — keep edits, show issues inline
+      if (data.requiresReview) {
+        setRegenQualityIssues(data.qualityIssues || ['Generated content did not meet quality standards.']);
+        setRegenerating(false);
+        return;
+      }
+
+      setRegenQualityIssues([]);
       setEditTitle(data.title);
       setEditSummary(data.summary);
       
@@ -325,6 +335,12 @@ export function KnowledgeDetail() {
           >
             {regenerating ? 'Regenerating...' : 'Regenerate with Gemini ✨'}
           </button>
+
+          {regenQualityIssues.length > 0 && (
+            <div style={{ fontSize: '0.85rem', color: '#92400E', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '4px', padding: '0.5rem 0.75rem', marginLeft: '0.5rem' }}>
+              Quality issues: {regenQualityIssues.join(' · ')}
+            </div>
+          )}
           
           <div style={{ display: 'flex', gap: '1rem' }}>
             <button 

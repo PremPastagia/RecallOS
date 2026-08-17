@@ -17,6 +17,9 @@ export function AddConcept() {
   const [newConceptId, setNewConceptId] = useState<string | null>(null);
   const [newConceptTitle, setNewConceptTitle] = useState<string | null>(null);
   const [sourceContext, setSourceContext] = useState('');
+  // Quality review states
+  const [qualityDraft, setQualityDraft] = useState<any | null>(null);
+  const [qualityIssues, setQualityIssues] = useState<string[]>([]);
 
   // Paste notes mode states
   const PASTE_MAX_CHARS = 15000;
@@ -103,6 +106,14 @@ export function AddConcept() {
       }
 
       const data = await response.json();
+
+      // Quality review required — show user the draft instead of auto-saving
+      if (data.requiresReview) {
+        setQualityDraft({ ...data, _sourceContext: payloadSourceContext });
+        setQualityIssues(data.qualityIssues || []);
+        setIsSubmitting(false);
+        return;
+      }
 
       const newId = `k_${Date.now()}`;
       const newConcept: KnowledgeItem = {
@@ -227,6 +238,13 @@ export function AddConcept() {
           if (!genRes.ok) throw new Error('Generation failed');
           const data = await genRes.json();
 
+          // If quality requires review, treat as error in batch context (user can add manually)
+          if (data.requiresReview) {
+            console.warn(`Quality check failed for batch concept: ${target.title}`, data.qualityIssues);
+            setExtractedConcepts(prev => prev.map(c => c.title === target.title ? { ...c, status: 'error' } : c));
+            continue;
+          }
+
           const newConcept: KnowledgeItem = {
             id: `k_${Date.now()}_${i}`,
             title: data.title || target.title,
@@ -267,6 +285,37 @@ export function AddConcept() {
     }
   };
 
+  const handleForceSave = async () => {
+    if (!qualityDraft) return;
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      const data = qualityDraft;
+      const payloadSourceContext = data._sourceContext;
+      const newId = `k_${Date.now()}`;
+      const newConcept: KnowledgeItem = {
+        id: newId,
+        title: data.title || 'Untitled Concept',
+        summary: data.summary || '',
+        fullContent: data.fullContent || '',
+        createdAt: new Date().toISOString(),
+        reviewState: { nextReviewDate: new Date().toISOString(), strength: 0, interval: 1, easeFactor: 2.5 },
+        relatedConcepts: [],
+        sourceContext: payloadSourceContext || undefined
+      };
+      await KnowledgeService.addConcept(newConcept);
+      setQualityDraft(null);
+      setQualityIssues([]);
+      setNewConceptId(newId);
+      setNewConceptTitle(newConcept.title);
+      setIsCaptured(true);
+    } catch (err: any) {
+      setError(err.message || 'Failed to save concept.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleCaptureAnother = () => {
     setContent('');
     resetTranscript();
@@ -274,6 +323,8 @@ export function AddConcept() {
     setNewConceptId(null);
     setNewConceptTitle(null);
     setSourceContext('');
+    setQualityDraft(null);
+    setQualityIssues([]);
   };
 
   const handleResetPaste = () => {
@@ -374,6 +425,45 @@ export function AddConcept() {
           >
             Return to Home
           </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Quality review screen — shown when backend requires user intervention
+  if (qualityDraft) {
+    return (
+      <div style={{ width: '100%', maxWidth: '600px', margin: '4rem auto' }}>
+        <div style={{ padding: '1.5rem', border: '1px solid #FDE68A', borderRadius: 'var(--radius-md)', backgroundColor: '#FFFBEB', marginBottom: '1.5rem' }}>
+          <h3 style={{ color: '#92400E', margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            Quality check flagged this concept
+          </h3>
+          <ul style={{ margin: '0.75rem 0 0 0', paddingLeft: '1.25rem', color: '#78350F', fontSize: '0.9rem', lineHeight: 1.6 }}>
+            {qualityIssues.map((issue, i) => <li key={i}>{issue}</li>)}
+          </ul>
+        </div>
+
+        <div style={{ padding: '1.5rem', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--color-card-bg)', marginBottom: '1.5rem' }}>
+          <p style={{ fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-text-secondary)', margin: '0 0 0.25rem 0' }}>Generated Concept</p>
+          <h3 style={{ margin: '0 0 0.5rem 0', color: 'var(--color-text-obsidian)' }}>{qualityDraft.title}</h3>
+          <p style={{ margin: 0, color: 'var(--color-text-secondary)', fontSize: '0.95rem', lineHeight: 1.5 }}>{qualityDraft.summary}</p>
+        </div>
+
+        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => { setQualityDraft(null); setQualityIssues([]); }}
+            style={{ backgroundColor: 'transparent', color: 'var(--color-text)', border: '1px solid var(--color-border)', padding: '0.8rem 1.5rem', borderRadius: 'var(--radius-md)', fontWeight: 500, cursor: 'pointer' }}
+          >
+            Discard
+          </button>
+          <button
+            onClick={handleForceSave}
+            disabled={isSubmitting}
+            style={{ backgroundColor: 'var(--color-accent-terracotta)', color: 'white', border: 'none', padding: '0.8rem 1.5rem', borderRadius: 'var(--radius-md)', fontWeight: 500, cursor: isSubmitting ? 'not-allowed' : 'pointer', opacity: isSubmitting ? 0.5 : 1 }}
+          >
+            {isSubmitting ? 'Saving...' : 'Save Anyway'}
+          </button>
         </div>
       </div>
     );
