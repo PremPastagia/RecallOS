@@ -91,17 +91,10 @@ function getLocalStore(): { items: KnowledgeItem[]; rels: [string, string][] } {
   try {
     const rawItems = localStorage.getItem(LOCAL_STORAGE_KEY);
     const rawRels = localStorage.getItem(LOCAL_STORAGE_RELS_KEY);
-    
-    let items: KnowledgeItem[] = rawItems ? JSON.parse(rawItems) : [...SEED_CONCEPTS];
-    let rels: [string, string][] = rawRels ? JSON.parse(rawRels) : [...SEED_RELATIONSHIPS];
 
-    // Ensure baseline seed concepts always exist
-    const itemIds = new Set(items.map(i => i.id));
-    for (const seed of SEED_CONCEPTS) {
-      if (!itemIds.has(seed.id)) {
-        items.push(seed);
-      }
-    }
+    // If no data yet (first visit), seed with defaults
+    const items: KnowledgeItem[] = rawItems ? JSON.parse(rawItems) : [...SEED_CONCEPTS];
+    const rels: [string, string][] = rawRels ? JSON.parse(rawRels) : [...SEED_RELATIONSHIPS];
 
     return { items, rels };
   } catch {
@@ -585,8 +578,58 @@ export const KnowledgeService = {
     } catch (e) {
       console.warn('Supabase removeConnection failed:', e);
     }
+  },
+
+  deleteConcept: async (id: string): Promise<void> => {
+    // 1. Local Store — remove item, all relationships, back-references from other items
+    const { items, rels } = getLocalStore();
+
+    // Filter out the deleted item and any relationships involving it
+    const updatedItems = items
+      .filter(i => i.id !== id)
+      .map(i => ({
+        ...i,
+        relatedConcepts: (i.relatedConcepts || []).filter(r => r.id !== id)
+      }));
+    const updatedRels = rels.filter(([s, t]) => s !== id && t !== id);
+    saveLocalStore(updatedItems, updatedRels);
+
+    if (!isSupabaseConfigured) return;
+
+    // 2. Supabase — enforce user ownership via RLS; delete in safe order
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        console.warn('deleteConcept: no authenticated user, aborting Supabase delete');
+        return;
+      }
+
+      // Delete relationships (both directions)
+      await supabase
+        .from('related_concepts')
+        .delete()
+        .or(`source_item_id.eq.${id},target_item_id.eq.${id}`);
+
+      // Delete review state
+      await supabase
+        .from('review_states')
+        .delete()
+        .eq('item_id', id);
+
+      // Delete knowledge item — RLS ensures only the owner can delete
+      const { error } = await supabase
+        .from('knowledge_items')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', session.user.id);
+
+      if (error) console.warn('Supabase deleteConcept warning:', error);
+    } catch (e) {
+      console.warn('Supabase deleteConcept failed:', e);
+    }
   }
 };
+
 
 function mapToKnowledgeItem(row: any): KnowledgeItem {
   const reviewData = Array.isArray(row.review_states) ? row.review_states[0] : row.review_states;

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { KnowledgeService } from '../lib/dataService';
 import { ConceptMap } from '../components/ConceptMap';
 import { ConnectionManager } from '../components/ConnectionManager';
@@ -9,6 +9,7 @@ import type { KnowledgeItem } from '../lib/types';
 
 export function KnowledgeDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [item, setItem] = useState<KnowledgeItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasActiveReviewSession, setHasActiveReviewSession] = useState(false);
@@ -25,6 +26,8 @@ export function KnowledgeDetail() {
   const [regenerating, setRegenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [regenQualityIssues, setRegenQualityIssues] = useState<string[]>([]);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     async function loadItem() {
@@ -237,6 +240,19 @@ export function KnowledgeDetail() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!item || !id) return;
+    setIsDeleting(true);
+    try {
+      await KnowledgeService.deleteConcept(id);
+      navigate('/', { replace: true });
+    } catch (e) {
+      console.error('Delete failed:', e);
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
   if (loading) return <div style={{ color: 'var(--color-text-secondary)', marginTop: '2rem' }}>Loading concept...</div>;
   
   if (!item) return (
@@ -403,6 +419,36 @@ export function KnowledgeDetail() {
               ✎
             </button>
           </h1>
+
+          {/* Unobtrusive delete — only visible on hover via opacity */}
+          {!showDeleteConfirm ? (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-secondary)', opacity: 0.35, fontSize: '0.85rem', padding: '0.25rem 0.5rem', borderRadius: '4px', transition: 'opacity 0.15s', flexShrink: 0, marginTop: '0.5rem' }}
+              onMouseEnter={e => (e.currentTarget.style.opacity = '0.8')}
+              onMouseLeave={e => (e.currentTarget.style.opacity = '0.35')}
+              title="Delete concept"
+            >
+              Delete
+            </button>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0, marginTop: '0.5rem' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>Permanently delete?</span>
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                style={{ background: '#B91C1C', color: 'white', border: 'none', borderRadius: '4px', padding: '0.3rem 0.75rem', fontSize: '0.85rem', fontWeight: 600, cursor: isDeleting ? 'not-allowed' : 'pointer', opacity: isDeleting ? 0.6 : 1 }}
+              >
+                {isDeleting ? 'Deleting...' : 'Yes, delete'}
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--color-text-secondary)', cursor: 'pointer', fontSize: '0.85rem', padding: '0.3rem 0.5rem' }}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </div>
         
         {isWeak && (

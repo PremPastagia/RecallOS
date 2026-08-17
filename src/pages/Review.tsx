@@ -66,9 +66,20 @@ export function Review() {
             setSelectedOption(existingSession.pendingEvaluation.selectedOption);
             setDirectRecallAnswer(existingSession.pendingEvaluation.directRecallAnswer);
           }
+
+          // Guard: filter out any concepts deleted since this session was saved
+          const allCurrentIds = new Set((await KnowledgeService.getAll()).map(c => c.id));
+          const aliveItems = existingSession.items.filter(i => allCurrentIds.has(i.id));
+          const aliveQuestions = existingSession.questions.filter(q => allCurrentIds.has(q.id));
+          const safeIndex = Math.min(existingSession.currentIndex, Math.max(0, aliveItems.length - 1));
+
+          setItems(aliveItems);
+          setQuestions(aliveQuestions);
+          setCurrentIndex(safeIndex);
           
           setActiveSession(existingSession);
           setLoading(false);
+
         } else {
           // Generate new session
           const reviewItems = await KnowledgeService.getDueForReview();
