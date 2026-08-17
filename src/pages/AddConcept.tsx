@@ -16,10 +16,12 @@ export function AddConcept() {
   const [isCaptured, setIsCaptured] = useState(false);
   const [newConceptId, setNewConceptId] = useState<string | null>(null);
   const [newConceptTitle, setNewConceptTitle] = useState<string | null>(null);
+  const [sourceContext, setSourceContext] = useState('');
 
   // Paste notes mode states
   const PASTE_MAX_CHARS = 15000;
   const [pasteContent, setPasteContent] = useState('');
+  const [pasteSourceContext, setPasteSourceContext] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractedConcepts, setExtractedConcepts] = useState<Array<{ title: string, summary: string, selected: boolean, status?: 'pending' | 'success' | 'duplicate' | 'error' }>>([]);
   const [isBatchSaving, setIsBatchSaving] = useState(false);
@@ -89,10 +91,11 @@ export function AddConcept() {
     const contextToUse = existingContext || topContextConcepts;
 
     try {
+      const payloadSourceContext = speechState === 'listening' ? 'Captured via voice' : sourceContext;
       const response = await fetch('/api/generate-concept', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rawInput, topRelevantConcepts: contextToUse })
+        body: JSON.stringify({ rawInput, topRelevantConcepts: contextToUse, sourceContext: payloadSourceContext })
       });
 
       if (!response.ok) {
@@ -115,7 +118,8 @@ export function AddConcept() {
           easeFactor: 2.5
         },
         relatedConcepts: [],
-        embedding: data.embedding
+        embedding: data.embedding,
+        sourceContext: payloadSourceContext || undefined
       };
 
       const relatedIds = data.relatedConceptIds || [];
@@ -217,7 +221,7 @@ export function AddConcept() {
           const genRes = await fetch('/api/generate-concept', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ rawInput, topRelevantConcepts: contextConcepts })
+            body: JSON.stringify({ rawInput, topRelevantConcepts: contextConcepts, sourceContext: pasteSourceContext || 'Extracted from pasted notes' })
           });
 
           if (!genRes.ok) throw new Error('Generation failed');
@@ -231,7 +235,8 @@ export function AddConcept() {
             createdAt: new Date().toISOString(),
             reviewState: { nextReviewDate: new Date().toISOString(), strength: 0, interval: 1, easeFactor: 2.5 },
             relatedConcepts: [],
-            embedding: data.embedding
+            embedding: data.embedding,
+            sourceContext: pasteSourceContext || 'Extracted from pasted notes'
           };
 
           const relatedIds = data.relatedConceptIds || [];
@@ -268,10 +273,12 @@ export function AddConcept() {
     setIsCaptured(false);
     setNewConceptId(null);
     setNewConceptTitle(null);
+    setSourceContext('');
   };
 
   const handleResetPaste = () => {
     setPasteContent('');
+    setPasteSourceContext('');
     setExtractedConcepts([]);
     setBatchComplete(false);
     setBatchSuccessCount(0);
@@ -534,7 +541,23 @@ export function AddConcept() {
               )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
+              <input 
+                type="text" 
+                placeholder="Context (e.g. From today's supply chain lecture)"
+                value={sourceContext}
+                onChange={(e) => setSourceContext(e.target.value)}
+                style={{
+                  flex: '1 1 300px',
+                  padding: '0.8rem 1rem',
+                  fontSize: '0.95rem',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: 'var(--color-bg)',
+                  color: 'var(--color-text-obsidian)',
+                  fontFamily: 'var(--font-sans)'
+                }}
+              />
               <button 
                 onClick={handleInitialCommit}
                 disabled={isSubmitting || (!content.trim() && !transcript.trim())}
@@ -587,7 +610,23 @@ export function AddConcept() {
                   {pasteContent.length.toLocaleString()} / {PASTE_MAX_CHARS.toLocaleString()} characters
                 </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
+                <input 
+                  type="text" 
+                  placeholder="Source / Context (e.g. Paul Graham's essay)"
+                  value={pasteSourceContext}
+                  onChange={(e) => setPasteSourceContext(e.target.value)}
+                  style={{
+                    flex: '1 1 300px',
+                    padding: '0.8rem 1rem',
+                    fontSize: '0.95rem',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: 'var(--radius-md)',
+                    backgroundColor: 'var(--color-card-bg)',
+                    color: 'var(--color-text-obsidian)',
+                    fontFamily: 'var(--font-sans)'
+                  }}
+                />
                 <button 
                   onClick={handleExtractConcepts}
                   disabled={isExtracting || !pasteContent.trim()}

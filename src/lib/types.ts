@@ -40,4 +40,5 @@ export interface KnowledgeItem {
   relatedConcepts: RelatedConcept[];
   questions?: ReviewQuestion[];
   embedding?: number[];
+  sourceContext?: string;
 }

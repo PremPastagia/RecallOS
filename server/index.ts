@@ -17,7 +17,7 @@ const PORT = 3001;
 
 app.post('/api/generate-concept', async (req, res) => {
   try {
-    const { rawInput, topRelevantConcepts = [] } = req.body;
+    const { rawInput, topRelevantConcepts = [], sourceContext } = req.body;
     
     if (!rawInput) {
       return res.status(400).json({ error: 'Input is required' });
@@ -97,9 +97,12 @@ app.post('/api/generate-concept', async (req, res) => {
     }
 
     // 2. Generate an embedding for it
+    const embedContents = `Title: ${parsedData.title}\n\nSummary: ${parsedData.summary}\n\nContent: ${parsedData.fullContent}` + 
+      (sourceContext ? `\n\nSource: ${sourceContext}` : '');
+
     const embedResponse = await ai.models.embedContent({
       model: 'text-embedding-004',
-      contents: `Title: ${parsedData.title}\n\nSummary: ${parsedData.summary}\n\nContent: ${parsedData.fullContent}`
+      contents: embedContents
     });
     
     if (embedResponse.embeddings && embedResponse.embeddings.length > 0) {
@@ -279,14 +282,17 @@ app.post('/api/generate-questions', async (req, res) => {
 
 app.post('/api/embed', async (req, res) => {
   try {
-    const { title, summary, fullContent } = req.body;
+    const { title, summary, fullContent, sourceContext } = req.body;
     if (!title || !summary || !fullContent) {
       return res.status(400).json({ error: 'Title, summary, and fullContent are required' });
     }
 
+    const embedContents = `Title: ${title}\n\nSummary: ${summary}\n\nContent: ${fullContent}` + 
+      (sourceContext ? `\n\nSource: ${sourceContext}` : '');
+
     const embedResponse = await ai.models.embedContent({
       model: 'text-embedding-004',
-      contents: `Title: ${title}\n\nSummary: ${summary}\n\nContent: ${fullContent}`
+      contents: embedContents
     });
     
     if (embedResponse.embeddings && embedResponse.embeddings.length > 0) {

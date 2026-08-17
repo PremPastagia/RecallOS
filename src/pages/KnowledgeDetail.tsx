@@ -20,6 +20,7 @@ export function KnowledgeDetail() {
   const [editExplanation, setEditExplanation] = useState('');
   const [editExample, setEditExample] = useState('');
   const [editMemoryHook, setEditMemoryHook] = useState('');
+  const [editSourceContext, setEditSourceContext] = useState('');
   const [saving, setSaving] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -115,6 +116,7 @@ export function KnowledgeDetail() {
     setEditExplanation(parsed.explanation || parsed.other);
     setEditExample(parsed.example);
     setEditMemoryHook(parsed.memoryHook);
+    setEditSourceContext(item.sourceContext || '');
     setErrorMsg('');
     setIsEditing(true);
   };
@@ -149,7 +151,7 @@ export function KnowledgeDetail() {
         const embedRes = await fetch('/api/embed', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: editTitle, summary: editSummary, fullContent })
+          body: JSON.stringify({ title: editTitle, summary: editSummary, fullContent, sourceContext: editSourceContext.trim() || undefined })
         });
         if (embedRes.ok) {
           const data = await embedRes.json();
@@ -167,7 +169,8 @@ export function KnowledgeDetail() {
         title: editTitle.trim(),
         summary: editSummary.trim(),
         fullContent,
-        embedding: newEmbedding
+        embedding: newEmbedding,
+        sourceContext: editSourceContext.trim() || undefined
       });
 
       const updated = await KnowledgeService.getById(id);
@@ -198,7 +201,8 @@ export function KnowledgeDetail() {
         body: JSON.stringify({
           title: editTitle.trim() || item.title,
           summary: editSummary.trim() || item.summary,
-          fullContent: currentFullContent
+          fullContent: currentFullContent,
+          sourceContext: editSourceContext.trim() || item.sourceContext || undefined
         })
       });
 
@@ -268,6 +272,17 @@ export function KnowledgeDetail() {
               onChange={e => setEditSummary(e.target.value)}
               rows={2}
               style={{ width: '100%', padding: '0.75rem', fontSize: '1.1rem', border: '1px solid var(--color-border)', borderRadius: '8px', backgroundColor: 'var(--color-card-bg)', color: 'var(--color-text-obsidian)', resize: 'vertical' }}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--color-text-secondary)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Source / Context (Optional)</label>
+            <input 
+              type="text" 
+              value={editSourceContext}
+              onChange={e => setEditSourceContext(e.target.value)}
+              style={{ width: '100%', padding: '0.75rem', fontSize: '1rem', border: '1px solid var(--color-border)', borderRadius: '8px', backgroundColor: 'var(--color-card-bg)', color: 'var(--color-text-obsidian)' }}
+              placeholder="e.g. From today's supply chain lecture"
             />
           </div>
 
@@ -393,10 +408,16 @@ export function KnowledgeDetail() {
         </p>
         
         {item.reviewState && (
-          <div style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', marginBottom: '2.5rem', display: 'flex', gap: '1rem', opacity: 0.8 }}>
+          <div style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', marginBottom: '2.5rem', display: 'flex', flexWrap: 'wrap', gap: '1rem', opacity: 0.8 }}>
             <span>Last reviewed: {item.reviewState.lastReviewDate ? formatDate(item.reviewState.lastReviewDate) : 'Never'}</span>
             <span>•</span>
             <span>Next review: {formatDate(item.reviewState.nextReviewDate)}</span>
+            {item.sourceContext && (
+              <>
+                <span>•</span>
+                <span style={{ fontStyle: 'italic' }}>Learned from: {item.sourceContext}</span>
+              </>
+            )}
           </div>
         )}
 
