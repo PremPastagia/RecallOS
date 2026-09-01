@@ -627,7 +627,102 @@ export const KnowledgeService = {
     } catch (e) {
       console.warn('Supabase deleteConcept failed:', e);
     }
-  }
+  },
+
+  // ─── Vault Export ─────────────────────────────────────────────────────────
+  exportVault: async (): Promise<{
+    version: number;
+    exportedAt: string;
+    count: number;
+    concepts: KnowledgeItem[];
+    relationships: { source: string; target: string }[];
+  }> => {
+    const all = await KnowledgeService.getAll();
+    const connections = await KnowledgeService.getAllConnections();
+
+    // Fetch full related concepts for each item
+    const enriched = await Promise.all(
+      all.map(async (item) => ({
+        ...item,
+        relatedConcepts: await KnowledgeService.getRelatedConcepts(item.id),
+      }))
+    );
+
+    return {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      count: enriched.length,
+      concepts: enriched,
+      relationships: connections.map((c) => ({
+        source: c.source,
+        target: c.target,
+      })),
+    };
+  },
+
+  // ─── Vault Import ─────────────────────────────────────────────────────────
+  importVault: async (
+    data: {
+      version: number;
+      concepts: KnowledgeItem[];
+      relationships?: { source: string; target: string }[];
+    },
+    onProgress?: (done: number, total: number, title: string) => void
+  ): Promise<{ imported: number; skipped: number; errors: number }> => {
+    if (!data || !Array.isArray(data.concepts)) {
+      throw new Error('Invalid vault file: missing concepts array.');
+    }
+
+    const existing = await KnowledgeService.getAll();
+    const existingTitles = new Set(
+      existing.map((i) => i.title.toLowerCase().trim())
+    );
+
+    let imported = 0;
+    let skipped = 0;
+    let errors = 0;
+    const total = data.concepts.length;
+
+    for (let i = 0; i < data.concepts.length; i++) {
+      const concept = data.concepts[i];
+      onProgress?.(i, total, concept.title);
+
+      // Skip duplicates by exact title match
+      if (existingTitles.has(concept.title.toLowerCase().trim())) {
+        skipped++;
+        continue;
+      }
+
+      try {
+        // Assign a fresh timestamp-based ID to avoid collisions
+        const importedConcept: KnowledgeItem = {
+          ...concept,
+          id: `k_import_${Date.now()}_${i}`,
+          // Reset review state to fresh — user should re-learn on import
+          reviewState: {
+            nextReviewDate: new Date().toISOString(),
+            strength: concept.reviewState?.strength ?? 0,
+            interval: concept.reviewState?.interval ?? 1,
+            easeFactor: concept.reviewState?.easeFactor ?? 2.5,
+          },
+          relatedConcepts: [],
+        };
+
+        await KnowledgeService.addConcept(importedConcept);
+        existingTitles.add(concept.title.toLowerCase().trim());
+        imported++;
+      } catch (e) {
+        console.warn('Import error for concept:', concept.title, e);
+        errors++;
+      }
+
+      // Small delay to avoid hammering storage on large imports
+      await new Promise((r) => setTimeout(r, 30));
+    }
+
+    onProgress?.(total, total, 'Complete');
+    return { imported, skipped, errors };
+  },
 };
 
 

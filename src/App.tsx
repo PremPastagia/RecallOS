@@ -11,6 +11,7 @@ import { Review } from './pages/Review';
 import { Connections } from './pages/Connections';
 import { Login } from './pages/Login';
 import { Signup } from './pages/Signup';
+import { Vault } from './pages/Vault';
 import './index.css';
 
 function App() {
@@ -29,6 +30,7 @@ function App() {
               <Route path="knowledge/:id" element={<KnowledgeDetail />} />
               <Route path="connections" element={<Connections />} />
               <Route path="review" element={<Review />} />
+              <Route path="vault" element={<Vault />} />
             </Route>
           </Route>
         </Routes>
