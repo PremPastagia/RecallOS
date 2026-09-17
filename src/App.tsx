@@ -12,6 +12,7 @@ import { Connections } from './pages/Connections';
 import { Login } from './pages/Login';
 import { Signup } from './pages/Signup';
 import { Vault } from './pages/Vault';
+import { Heatmap } from './pages/Heatmap';
 import './index.css';
 
 function App() {
@@ -31,6 +32,7 @@ function App() {
               <Route path="connections" element={<Connections />} />
               <Route path="review" element={<Review />} />
               <Route path="vault" element={<Vault />} />
+              <Route path="heatmap" element={<Heatmap />} />
             </Route>
           </Route>
         </Routes>

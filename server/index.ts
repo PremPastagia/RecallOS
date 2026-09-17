@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import rateLimit from 'express-rate-limit';
 import { GoogleGenAI, Type } from '@google/genai';
 import { cosineSimilarity } from './cosineSimilarity';
 
@@ -10,10 +11,23 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Rate-limit all AI endpoints: max 30 requests per 15 min per IP
+const aiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests — please wait a few minutes before trying again.' }
+});
+app.use('/api', aiLimiter);
+
 // Load from environment variable ONLY
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const PORT = 3001;
+
+// Health check (excluded from rate limiter — not under /api)
+app.get('/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
 // ─── Quality Validation ───────────────────────────────────────────────────────
 
@@ -340,9 +354,10 @@ app.post('/api/generate-questions', async (req, res) => {
     const systemInstruction = `
       You are Smriti, an AI memory test generator.
       For the provided list of concepts, generate exactly one review question for each concept.
-      Vary the question type between "multiple_choice" and "direct_recall".
+      Vary the question type between "multiple_choice", "direct_recall", and "cloze".
       CRITICAL: Questions MUST test deep understanding and application, not trivial wording.
       CRITICAL: For multiple choice, provide exactly 4 options. Make the incorrect options plausible but definitively wrong.
+      CRITICAL: For cloze, take one key sentence from the concept content and replace the most important word or short phrase (2-4 words) with "___". The clozeAnswer must be exactly the blanked-out text.
       Do not repeat identical questions if a concept appears twice.
     `;
 
@@ -364,14 +379,15 @@ app.post('/api/generate-questions', async (req, res) => {
               properties: {
                 id: { type: Type.STRING, description: "The ID of the concept this question is for" },
                 conceptTitle: { type: Type.STRING, description: "The title of the concept" },
-                type: { type: Type.STRING, description: "Either 'multiple_choice' or 'direct_recall'" },
-                question: { type: Type.STRING, description: "The question text" },
+                type: { type: Type.STRING, description: "Either 'multiple_choice', 'direct_recall', or 'cloze'" },
+                question: { type: Type.STRING, description: "The question text, or the sentence with ___ for cloze" },
                 options: { 
                   type: Type.ARRAY, 
                   items: { type: Type.STRING }, 
-                  description: "4 options if multiple choice, otherwise empty or null" 
+                  description: "4 options if multiple choice, otherwise empty" 
                 },
                 correctAnswer: { type: Type.STRING, description: "The correct answer or concept essence" },
+                clozeAnswer: { type: Type.STRING, description: "The exact blanked-out text for cloze questions, empty otherwise" },
                 explanation: { type: Type.STRING, description: "A concise 1-sentence explanation of why the answer is correct" }
               },
               required: ["id", "conceptTitle", "type", "question", "correctAnswer", "explanation"]
@@ -392,6 +408,7 @@ app.post('/api/generate-questions', async (req, res) => {
         question: `What is the core meaning of ${c.title}?`,
         options: null,
         correctAnswer: c.summary,
+        clozeAnswer: '',
         explanation: 'This is the foundational definition of the concept.'
       }));
     }

@@ -2,7 +2,9 @@
 
 :root {
   --color-bg-ivory: #FAF8F5;
+  --color-bg: #FAF8F5;
   --color-text-obsidian: #1A1A1A;
+  --color-text: #1A1A1A;
   --color-text-secondary: #555555;
   --color-accent-terracotta: #C86438;
   --color-accent-terracotta-hover: #b05731;
@@ -19,7 +21,10 @@
   --spacing-lg: 4rem;
   --spacing-xl: 8rem;
   
+  --radius-sm: 6px;
   --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
 }
 
 * {

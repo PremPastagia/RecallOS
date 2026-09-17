@@ -19,6 +19,7 @@ export function Layout() {
           <Link to="/search">Search</Link>
           <Link to="/connections">Connections</Link>
           <Link to="/review">Review</Link>
+          <Link to="/heatmap">Heatmap</Link>
           <Link to="/vault">Vault</Link>
           <button 
             onClick={signOut}

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { KnowledgeService } from '../lib/dataService';
 import { calculateNextReviewState } from '../lib/spacedRepetition';
-import { ReviewSessionManager, type ReviewSessionData } from '../lib/reviewSession';
+import { ReviewSessionManager, ReviewHistoryTracker, type ReviewSessionData } from '../lib/reviewSession';
 import type { KnowledgeItem, Question, ReviewGrade } from '../lib/types';
 
 export function Review() {
@@ -139,6 +139,7 @@ export function Review() {
       const newState = calculateNextReviewState(item.reviewState, grade);
       try {
         await KnowledgeService.updateReviewState(item.id, newState);
+        ReviewHistoryTracker.recordGrade(grade);
         const newResult = {
           id: item.id,
           title: item.title,
@@ -304,7 +305,11 @@ export function Review() {
   const question = questions[currentIndex];
   const progress = ((currentIndex) / questions.length) * 100;
 
-  const isWrongAnswer = (selectedOption !== null && selectedOption !== question.correctAnswer) || (question.type === 'direct_recall');
+  const isWrongAnswer = question.type === 'multiple_choice'
+    ? (selectedOption !== null && selectedOption !== question.correctAnswer)
+    : question.type === 'cloze'
+    ? directRecallAnswer.trim().toLowerCase() !== (question.clozeAnswer || question.correctAnswer).trim().toLowerCase()
+    : true; // direct_recall always shows answer for self-evaluation
 
   return (
     <div style={{ width: '100%', maxWidth: '600px', margin: '0 auto' }}>
@@ -345,6 +350,49 @@ export function Review() {
                 {opt}
               </button>
             ))
+          ) : question.type === 'cloze' ? (
+            <div>
+              <p style={{ fontSize: '1.15rem', lineHeight: 1.7, color: 'var(--color-text-secondary)', marginBottom: '1.25rem', fontStyle: 'italic' }}>
+                Fill in the blank:
+              </p>
+              <input
+                type="text"
+                value={directRecallAnswer}
+                onChange={e => {
+                  setDirectRecallAnswer(e.target.value);
+                  savePendingEvaluation(showEvaluation, selectedOption, e.target.value);
+                }}
+                placeholder="Type the missing word or phrase..."
+                style={{
+                  width: '100%',
+                  padding: '1rem',
+                  fontSize: '1.1rem',
+                  backgroundColor: 'var(--color-bg)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--color-text)',
+                  marginBottom: '1rem',
+                  fontFamily: 'inherit'
+                }}
+                onKeyDown={e => { if (e.key === 'Enter') handleDirectRecallReveal(); }}
+              />
+              <button 
+                onClick={handleDirectRecallReveal}
+                style={{
+                  width: '100%',
+                  padding: '1rem',
+                  backgroundColor: 'var(--color-text)',
+                  color: 'var(--color-bg)',
+                  border: 'none',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '1.1rem',
+                  fontWeight: 500,
+                  cursor: 'pointer'
+                }}
+              >
+                Check Answer
+              </button>
+            </div>
           ) : (
             <div>
               <textarea 
@@ -391,13 +439,17 @@ export function Review() {
             position: 'relative'
           }}>
             <h3 style={{ margin: '0 0 0.5rem 0', color: !isWrongAnswer ? '#4D7C0F' : '#B91C1C' }}>
-              {selectedOption === question.correctAnswer ? 'Correct!' : (selectedOption === null ? 'The True Concept:' : 'Not quite.')}
+              {question.type === 'multiple_choice'
+                ? (selectedOption === question.correctAnswer ? 'Correct!' : 'Not quite.')
+                : question.type === 'cloze'
+                ? (!isWrongAnswer ? 'Correct!' : 'Not quite.')
+                : 'The True Concept:'}
             </h3>
             
-            {isWrongAnswer && (
+            {isWrongAnswer && (question.type === 'multiple_choice' ? selectedOption : directRecallAnswer.trim()) && (
               <div style={{ marginBottom: '1rem', padding: '0.5rem', backgroundColor: 'rgba(185, 28, 28, 0.05)', borderRadius: '6px', borderLeft: '3px solid #B91C1C' }}>
-                <p style={{ margin: 0, fontSize: '0.85rem', color: '#B91C1C', textTransform: 'uppercase', letterSpacing: '0.05em' }}>You selected:</p>
-                <p style={{ margin: '0.2rem 0 0 0', color: '#7F1D1D' }}>{selectedOption}</p>
+                <p style={{ margin: 0, fontSize: '0.85rem', color: '#B91C1C', textTransform: 'uppercase', letterSpacing: '0.05em' }}>You answered:</p>
+                <p style={{ margin: '0.2rem 0 0 0', color: '#7F1D1D' }}>{question.type === 'multiple_choice' ? selectedOption : directRecallAnswer}</p>
               </div>
             )}
 

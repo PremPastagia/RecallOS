@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: smriti-api
+    runtime: node
+    buildCommand: npm install && npm run build:server
+    startCommand: node dist/server/index.js
+    healthCheckPath: /health
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false

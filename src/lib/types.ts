@@ -9,10 +9,11 @@ export type ReviewGrade = 'Again' | 'Hard' | 'Good' | 'Easy';
 export interface Question {
   id: string; // concept id
   conceptTitle: string;
-  type: 'multiple_choice' | 'direct_recall';
+  type: 'multiple_choice' | 'direct_recall' | 'cloze';
   question: string;
   options?: string[]; // for multiple choice
   correctAnswer: string;
+  clozeAnswer?: string; // blanked-out text for cloze
   explanation: string;
 }
 
@@ -25,7 +26,7 @@ export interface ReviewQuestion {
 export interface ReviewState {
   lastReviewDate?: string; // ISO format date string
   nextReviewDate: string; // ISO format date string
-  strength: number;       // 0 to 1
+  strength: number;       // 0 to 4
   interval: number;       // Days between reviews
   easeFactor: number;     // SM-2 algorithm style ease factor
 }

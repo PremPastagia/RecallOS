@@ -91,3 +91,36 @@ export const ReviewSessionManager = {
     localStorage.removeItem(SESSION_KEY);
   }
 };
+
+// ─── Review History Tracker (for Fading Memory Heatmap) ─────────────────────
+const HISTORY_KEY = 'smriti_review_history';
+
+export interface DailyReviewRecord {
+  date: string;   // YYYY-MM-DD
+  count: number;  // reviews completed that day
+  grades: { again: number; hard: number; good: number; easy: number };
+}
+
+export const ReviewHistoryTracker = {
+  getAll(): DailyReviewRecord[] {
+    try {
+      const raw = localStorage.getItem(HISTORY_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  },
+
+  recordGrade(grade: ReviewGrade): void {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const records = this.getAll();
+      const existing = records.find(r => r.date === today);
+      if (existing) {
+        existing.count++;
+        existing.grades[grade.toLowerCase() as keyof typeof existing.grades]++;
+      } else {
+        records.push({ date: today, count: 1, grades: { again: 0, hard: 0, good: 0, easy: 0, [grade.toLowerCase()]: 1 } });
+      }
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(records));
+    } catch { /* non-critical */ }
+  }
+};
