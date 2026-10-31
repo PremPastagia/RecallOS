@@ -3,7 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
 import { GoogleGenAI, Type } from '@google/genai';
-import { cosineSimilarity } from './cosineSimilarity';
+import { cosineSimilarity } from './cosineSimilarity.js';
 
 dotenv.config();
 
@@ -341,6 +341,128 @@ app.post('/api/search', async (req, res) => {
   } catch (error: any) {
     console.error('Gemini API Error (search):', error);
     res.status(500).json({ error: 'Failed to perform semantic search' });
+  }
+});
+
+app.post('/api/rag-ask', async (req, res) => {
+  try {
+    const { question, concepts } = req.body;
+
+    if (!question || typeof question !== 'string') {
+      return res.status(400).json({ error: 'Question is required' });
+    }
+
+    if (!concepts || !Array.isArray(concepts) || concepts.length === 0) {
+      return res.status(400).json({ error: 'No concepts available in vault to query' });
+    }
+
+    // 1. Embed user query using Gemini embedding model
+    const embedResponse = await ai.models.embedContent({
+      model: 'text-embedding-004',
+      contents: question
+    });
+
+    const questionEmbedding = embedResponse.embeddings?.[0]?.values;
+    if (!questionEmbedding) {
+      throw new Error('Failed to generate embedding for question');
+    }
+
+    const qLower = question.toLowerCase();
+
+    // 2. Score similarity against all concepts in vault
+    const scored = concepts.map((concept: any) => {
+      let similarity = 0;
+      if (concept.embedding && Array.isArray(concept.embedding)) {
+        try {
+          similarity = cosineSimilarity(questionEmbedding, concept.embedding);
+        } catch (e) {
+          console.error(`Error computing similarity for ${concept.id}:`, e);
+        }
+      }
+
+      const titleLower = (concept.title || '').toLowerCase();
+      if (titleLower === qLower) {
+        similarity += 1.0;
+      } else if (titleLower.includes(qLower) || qLower.includes(titleLower)) {
+        similarity += 0.35;
+      } else if (concept.summary && concept.summary.toLowerCase().includes(qLower)) {
+        similarity += 0.15;
+      }
+
+      return {
+        id: concept.id,
+        title: concept.title,
+        summary: concept.summary,
+        fullContent: concept.fullContent,
+        relatedConcepts: concept.relatedConcepts || [],
+        similarity
+      };
+    });
+
+    scored.sort((a: any, b: any) => b.similarity - a.similarity);
+    const topMatches = scored.filter((c: any) => c.similarity > 0.55).slice(0, 4);
+
+    if (topMatches.length === 0) {
+      return res.json({
+        answer: "I couldn't find any concepts in your vault directly relevant to this question. Try adding notes on this topic or rephrasing your question.",
+        sources: []
+      });
+    }
+
+    // 3. Graph Augmentation: extract 1-hop connected concept titles
+    const graphNeighbors = new Set<string>();
+    topMatches.forEach((m: any) => {
+      if (Array.isArray(m.relatedConcepts)) {
+        m.relatedConcepts.forEach((rel: any) => {
+          if (rel && rel.title) graphNeighbors.add(rel.title);
+        });
+      }
+    });
+
+    // 4. Augment context with concept details and graph neighborhood
+    const contextText = topMatches.map((c: any) =>
+      `### Concept: ${c.title} (ID: ${c.id})\n**Summary:** ${c.summary}\n**Details:**\n${c.fullContent}`
+    ).join('\n\n---\n\n');
+
+    const connectedContext = graphNeighbors.size > 0
+      ? `\nConnected Knowledge Nodes in Graph: ${Array.from(graphNeighbors).join(', ')}`
+      : '';
+
+    // 5. Grounded Generation via Gemini
+    const systemInstruction = `
+      You are Smriti, a personal second-brain AI running a Graph-RAG (Retrieval-Augmented Generation) system.
+      Your goal is to answer the user's question accurately using ONLY the retrieved knowledge vault context below.
+
+      STRICT GROUNDING RULES:
+      1. Base your answer directly on the provided concept notes. Do not fabricate facts outside this context.
+      2. If the notes only partially answer the question, state what is known and clarify what is missing.
+      3. When referencing a concept, provide an inline markdown link: [Concept Title](/knowledge/ID).
+      4. Keep the explanation clear, insightful, and concise (2-4 paragraphs maximum).
+      5. Mention how concepts relate to each other if relevant.
+    `;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.6-flash',
+      contents: `User Question: "${question}"\n\n=== RETRIEVED VAULT CONTEXT ===\n${contextText}\n${connectedContext}`,
+      config: {
+        systemInstruction
+      }
+    });
+
+    const answer = response.text || 'Unable to synthesize an answer from the retrieved notes.';
+
+    res.json({
+      answer,
+      sources: topMatches.map((c: any) => ({
+        id: c.id,
+        title: c.title,
+        summary: c.summary,
+        similarity: Math.round(c.similarity * 100) / 100
+      }))
+    });
+  } catch (error: any) {
+    console.error('Gemini RAG Ask Error:', error);
+    res.status(500).json({ error: 'Failed to synthesize answer from knowledge vault.' });
   }
 });
 
