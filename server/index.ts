@@ -24,6 +24,9 @@ app.use('/api', aiLimiter);
 // Load from environment variable ONLY
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+const GENERATION_MODEL = 'gemini-3.8-flash';
+const EMBEDDING_MODEL = 'gemini-embedding-001';
+
 const PORT = 3001;
 
 // Health check (excluded from rate limiter — not under /api)
@@ -174,7 +177,7 @@ app.post('/api/generate-concept', async (req, res) => {
 
     // 1. Generate text structured output
     const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
+      model: GENERATION_MODEL,
       contents: `User Input: ${rawInput}`,
       config: {
         systemInstruction,
@@ -197,7 +200,7 @@ app.post('/api/generate-concept', async (req, res) => {
       console.log('[Quality] Initial validation failed:', validation.issues);
       try {
         const retryResponse = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
+          model: GENERATION_MODEL,
           contents: `User Input: ${rawInput}\n\nImportant: Your previous response had these quality issues — please fix them: ${validation.issues.join('; ')}. Be concise, meaningful, and avoid filler.`,
           config: {
             systemInstruction,
@@ -237,7 +240,7 @@ app.post('/api/generate-concept', async (req, res) => {
       (sourceContext ? `\n\nSource: ${sourceContext}` : '');
 
     const embedResponse = await ai.models.embedContent({
-      model: 'text-embedding-004',
+      model: EMBEDDING_MODEL,
       contents: embedContents
     });
 
@@ -267,7 +270,7 @@ app.post('/api/search', async (req, res) => {
 
     // Embed the query
     const embedResponse = await ai.models.embedContent({
-      model: 'text-embedding-004',
+      model: EMBEDDING_MODEL,
       contents: query
     });
     
@@ -358,7 +361,7 @@ app.post('/api/rag-ask', async (req, res) => {
 
     // 1. Embed user query using Gemini embedding model
     const embedResponse = await ai.models.embedContent({
-      model: 'text-embedding-004',
+      model: EMBEDDING_MODEL,
       contents: question
     });
 
@@ -442,7 +445,7 @@ app.post('/api/rag-ask', async (req, res) => {
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
+      model: GENERATION_MODEL,
       contents: `User Question: "${question}"\n\n=== RETRIEVED VAULT CONTEXT ===\n${contextText}\n${connectedContext}`,
       config: {
         systemInstruction
@@ -489,7 +492,7 @@ app.post('/api/generate-questions', async (req, res) => {
     let parsedData = [];
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
+        model: GENERATION_MODEL,
         contents,
         config: {
           systemInstruction,
@@ -553,7 +556,7 @@ app.post('/api/embed', async (req, res) => {
       (sourceContext ? `\n\nSource: ${sourceContext}` : '');
 
     const embedResponse = await ai.models.embedContent({
-      model: 'text-embedding-004',
+      model: EMBEDDING_MODEL,
       contents: embedContents
     });
     
@@ -600,7 +603,7 @@ app.post('/api/regenerate-concept', async (req, res) => {
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
+      model: GENERATION_MODEL,
       contents: `Improve and refine this concept:\nTitle: ${title}\nSummary: ${summary}\nContent: ${fullContent}`,
       config: {
         systemInstruction,
@@ -618,7 +621,7 @@ app.post('/api/regenerate-concept', async (req, res) => {
       console.log('[Quality/Regen] Initial validation failed:', validation.issues);
       try {
         const retryResponse = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
+          model: GENERATION_MODEL,
           contents: `Improve and refine this concept:\nTitle: ${title}\nSummary: ${summary}\nContent: ${fullContent}\n\nFix these issues in your refinement: ${validation.issues.join('; ')}`,
           config: {
             systemInstruction,
@@ -680,7 +683,7 @@ app.post('/api/extract-concepts', async (req, res) => {
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
+      model: GENERATION_MODEL,
       contents: `Extract distinct concepts from the following text:\n\n${text}`,
       config: {
         systemInstruction,
